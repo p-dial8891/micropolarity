@@ -1,2 +1,2 @@
-# micropolarity
+# MicroPolarity
 A bare-metal music player for the polaris streaming server
