@@ -31,6 +31,9 @@ use nanomp3::Decoder;
 // For USB
 use embassy_rp::{peripherals::USB, usb};
 
+// Bring your own wifi credentials and store it in auth.rs
+// pub const WIFI_NETWORK: &str = "AAAAAAA"; // change to your network SSID
+// pub const WIFI_PASSWORD: &str = "XXXXXXXX"; // change to your network password
 mod auth;
 
 bind_interrupts!(struct Irqs {
