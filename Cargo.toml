@@ -1,0 +1,34 @@
+[package]
+name = "micropolarity"
+version = "0.0.1"
+edition = "2024"
+exclude = [
+    "audacity",
+    "console",
+    "generate",
+    "pico2-embassy-projects",
+    "play-sine",
+    "send",
+    "wifi",
+    "blink",
+    "cargo-generate",
+    "embassy",
+    "picotool-2.2.0-a4-x64-win",
+    "text.txt",
+    "workspace.code-workspace"
+]
+
+#include = [ 
+#    "Cargo.toml",
+#    "stream/**"
+#]
+description = "This is a placeholder package."
+repository = "https://github.com/p-dial8891/micropolarity.git"
+keywords = ["streaming", "audio", "pico"]
+license = "CC0-1.0"
+
+[[bin]]
+name = "stream"
+path = "stream/src/main.rs"
+
+
