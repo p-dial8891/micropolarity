@@ -109,41 +109,43 @@ async fn player_task(
     log::info!("Player started with {}, {}, {}, {}, {} samples/frame ...", 
         prefix.len(), suffix.len(), front_buffer.len(), back_buffer.len(), nanomp3::MAX_SAMPLES_PER_FRAME);
 
-    // READ MP3 DATA
-    profile_start = Instant::now().as_millis();
-    read = match socket.read(&mut read_buf).await {
-        Ok(0) => {
-            log::warn!("read EOF");
-            return;
+    while used < ( front_buffer.len()*4 - (nanomp3::MAX_SAMPLES_PER_FRAME*4) ) {
+        // READ MP3 DATA
+        profile_start = Instant::now().as_millis();
+        read = (read-decoded) + match socket.read(&mut read_buf[(read-decoded)..]).await {
+            Ok(0) => {
+                log::warn!("read EOF");
+                return;
+            }
+            Ok(n) => { log::warn!("read {} bytes, used {} bytes", n, used); n },
+            Err(e) => {
+                log::warn!("read error: {:?}", e);
+                return;
+            }
+        };
+        
+        // DECODE MP3 DATA
+        let mut buffer_initialised : &mut [f32] = unsafe { mem::transmute(&mut *front_buffer) };
+        let (decoded_t, frame_info_t) = decoder.decode(&read_buf[..read],&mut buffer_initialised[(used/4)..]);
+        frame_info = frame_info_t; decoded = decoded_t;
+        if let Some(f) = frame_info {
+            samples = f.samples_produced;
+        } else {
+            samples = 0;
         }
-        Ok(n) => { log::warn!("read {} bytes, used {} bytes", n, used); n },
-        Err(e) => {
-            log::warn!("read error: {:?}", e);
-            return;
+        let mut i = 0;
+        for mut s in &mut buffer_initialised[(used/4)..((used/4)+samples)] {
+            let mut f = *s;
+            let s_scaled = f * 32767f32;
+            let s_scaled_floor = s_scaled as i16;
+            let s_scaled_floor_udword = ( s_scaled_floor as u16 as u32 ) * 0x10001;
+            let mut pcm : &mut u32 = unsafe { mem::transmute(s) };
+            *pcm = s_scaled_floor_udword;
+            i += 1;
         }
-    };
-    
-    // DECODE MP3 DATA
-    let mut buffer_initialised : &mut [f32] = unsafe { mem::transmute(&mut *front_buffer) };
-    let (decoded_t, frame_info_t) = decoder.decode(&read_buf[..read],buffer_initialised);
-    frame_info = frame_info_t; decoded = decoded_t;
-    if let Some(f) = frame_info {
-        samples = f.samples_produced;
-    } else {
-        samples = 0;
+        used += (i*4);
+        read_buf.copy_within(decoded..read, 0);
     }
-    let mut i = 0;
-    for mut s in &mut buffer_initialised[..samples] {
-        let mut f = *s;
-        let s_scaled = f * 32767f32;
-        let s_scaled_floor = s_scaled as i16;
-        let s_scaled_floor_udword = ( s_scaled_floor as u16 as u32 ) * 0x10001;
-        let mut pcm : &mut u32 = unsafe { mem::transmute(s) };
-        *pcm = s_scaled_floor_udword;
-        i += 1;
-    }
-    used += (i*4);
-    read_buf.copy_within(decoded..read, 0);
 
     loop{
         // PLAY SAMPLES
@@ -156,48 +158,49 @@ async fn player_task(
         } else {
             log::info!("No decoder info.");
         }
-        let dma_future = i2s.write(&dma_buffer[0..samples]);
+        let dma_future = i2s.write(&dma_buffer[0..(used/4)]);
 
         profile_start = Instant::now().as_millis();
 
-        // READ MP3 DATA
-        read = (read-decoded) + match socket.read(&mut read_buf[(read-decoded)..]).await {
-            Ok(0) => {
-                log::warn!("read EOF");
-                return;
-            }
-            Ok(n) => { log::warn!("read {} bytes, used {} bytes", n, used); n },
-            Err(e) => {
-                log::warn!("read error: {:?}", e);
-                return;
-            }
-        };
-
-
         used = 0;
-        let mut retry_count = 5;
+        // let mut retry_count = 5;
 
-        // DECODE MP3 DATA
-        let mut buffer_initialised : &mut [f32] = unsafe { mem::transmute(&mut *back_buffer) };
-        let (decoded_t, frame_t) = decoder.decode(&read_buf[..read],buffer_initialised);
-        frame_info = frame_t; decoded = decoded_t;
-        if let Some(f) = frame_info {
-            samples = f.samples_produced;
-        } else {
-            samples = 0;
+        while used < ( back_buffer.len()*4 - (nanomp3::MAX_SAMPLES_PER_FRAME*4) ) {
+            // READ MP3 DATA
+            read = (read-decoded) + match socket.read(&mut read_buf[(read-decoded)..]).await {
+                Ok(0) => {
+                    log::warn!("read EOF");
+                    return;
+                }
+                Ok(n) => { log::warn!("read {} bytes, used {} bytes", n, used); n },
+                Err(e) => {
+                    log::warn!("read error: {:?}", e);
+                    return;
+                }
+            };
+
+            // DECODE MP3 DATA
+            let mut buffer_initialised : &mut [f32] = unsafe { mem::transmute(&mut *back_buffer) };
+            let (decoded_t, frame_t) = decoder.decode(&read_buf[..read],&mut buffer_initialised[(used/4)..]);
+            frame_info = frame_t; decoded = decoded_t;
+            if let Some(f) = frame_info {
+                samples = f.samples_produced;
+            } else {
+                samples = 0;
+            }
+            let mut i = 0;
+            for mut s in &mut buffer_initialised[(used/4)..((used/4)+samples)] {
+                let mut f = *s;
+                let s_scaled = f * 32767f32;
+                let s_scaled_floor = s_scaled as i16;
+                let s_scaled_floor_udword = ( s_scaled_floor as u16 as u32 ) * 0x10001;
+                let mut pcm : &mut u32 = unsafe { mem::transmute(s) };
+                *pcm = s_scaled_floor_udword;
+                i += 1;
+            }
+            used += (i*4);
+            read_buf.copy_within(decoded..read, 0);
         }
-        let mut i = 0;
-        for mut s in &mut buffer_initialised[..samples] {
-            let mut f = *s;
-            let s_scaled = f * 32767f32;
-            let s_scaled_floor = s_scaled as i16;
-            let s_scaled_floor_udword = ( s_scaled_floor as u16 as u32 ) * 0x10001;
-            let mut pcm : &mut u32 = unsafe { mem::transmute(s) };
-            *pcm = s_scaled_floor_udword;
-            i += 1;
-        }
-        used += (i*4);
-        read_buf.copy_within(decoded..read, 0);
 
         dma_future.await;
         mem::swap(&mut back_buffer, &mut front_buffer);
