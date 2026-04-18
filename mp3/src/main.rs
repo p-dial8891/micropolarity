@@ -170,7 +170,7 @@ async fn player_task(
             read = (read-decoded) + match socket.read(&mut read_buf[(read-decoded)..]).await {
                 Ok(0) => {
                     log::warn!("read EOF");
-                    return;
+                    0
                 }
                 Ok(n) => { log::warn!("read {} bytes, used {} bytes", n, used); n },
                 Err(e) => {
