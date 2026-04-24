@@ -7,7 +7,8 @@ use std::time::{Duration, Instant};
 use std::io::Write;
 
 fn main() {
-	let mut fp = String::from("../audacity/");
+	// let mut fp = String::from("../audacity/");
+    let mut fp = String::from("");
     fp.extend([std::env::args().nth(1).unwrap()]);
     let mut input = File::open(fp).unwrap();
 

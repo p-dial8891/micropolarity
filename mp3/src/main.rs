@@ -130,6 +130,10 @@ async fn player_task(
         frame_info = frame_info_t; decoded = decoded_t;
         if let Some(f) = frame_info {
             samples = f.samples_produced;
+            if f.sample_rate != SAMPLE_RATE {
+                log::warn!("Incompatible sample rate! Exiting...");
+                return;
+            }
         } else {
             samples = 0;
         }
