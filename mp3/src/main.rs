@@ -43,7 +43,7 @@ bind_interrupts!(struct Irqs {
     //USBCTRL_IRQ => usb::InterruptHandler<USB>;    
 });
 
-const SAMPLE_RATE: u32 = 48000;
+const SAMPLE_RATE: u32 = 44100;
 const BIT_DEPTH: u32 = 16;
 const READ_SIZE: usize = 32768;
 
@@ -138,48 +138,36 @@ async fn player_task(
             samples = 0;
         }
         let mut i = 0;
-        let mut s_scaled_floor_udword = 0u32;
         for mut s in &mut buffer_initialised[(used/4)..((used/4)+(samples*2))] {
             let mut f = *s;
             let s_scaled = f * 32767f32;
             let s_scaled_floor = s_scaled as i16;
-            if i % 2 == 0 {
-                s_scaled_floor_udword = ( s_scaled_floor as u16 as u32 );
-            } else {
-                s_scaled_floor_udword |= ( ( s_scaled_floor as u16 as u32 ) * 0x10000u32 );
-                let mut pcm : &mut u32 = unsafe { mem::transmute(s) };
-                *pcm = s_scaled_floor_udword;
-            }
+            let s_scaled_floor_udword = ( s_scaled_floor as u16 as u32 ) ;
+            let mut pcm : &mut u32 = unsafe { mem::transmute(s) };
+            *pcm = s_scaled_floor_udword;
             i += 1;
         }
         used += (i*4);
         read_buf.copy_within(decoded..read, 0);
     }
+    let mut dma_buffer : &mut [u32] = unsafe { mem::transmute(&mut *front_buffer) };
+    //// Collect every 2nd sample
+    for i in 0..(used/(4*2)) {
+        dma_buffer[i] = ( dma_buffer[i*2] * 0x10000u32) | ( dma_buffer[(i*2)+1] & 0xFFFF ) ;
+    }
+    used /= 2;
 
     loop{
+        profile_end = Instant::now().as_millis();
+        // log::info!("Playing {} bytes @ {:.3}Kbps with {} bytes queued", used,
+        //     (used as f32)/((profile_end - profile_start) as f32), socket.recv_queue(),);
+        // if let Some(f) = frame_info {
+        //     log::info!("{:?} with {decoded} bytes decoded and {} bytes buffered",f, read);
+        // } else {
+        //     log::info!("No decoder info.");
+        // }
         // PLAY SAMPLES
         let mut dma_buffer : &mut [u32] = unsafe { mem::transmute(&mut *front_buffer) };
-        //// Collect every 2nd sample
-        // for n in 0..(used/4) {
-        //     if n % 2 == 1 {
-        //         dma_buffer.copy_within(n..(n+1),n/2)
-        //     }
-        // }
-        for n in 0..(used/4) {
-            if n % 2 == 1 {
-                dma_buffer[n/2] = dma_buffer[n];
-            }
-        }
-
-        used /= 2;
-        profile_end = Instant::now().as_millis();
-        log::info!("Playing {} bytes @ {:.3}Kbps with {} bytes queued", used,
-            (used as f32)/((profile_end - profile_start) as f32), socket.recv_queue(),);
-        if let Some(f) = frame_info {
-            log::info!("{:?} with {decoded} bytes decoded and {} bytes buffered",f, read);
-        } else {
-            log::info!("No decoder info.");
-        }
         let dma_future = i2s.write(&dma_buffer[0..(used/4)]);
 
         profile_start = Instant::now().as_millis();
@@ -210,27 +198,26 @@ async fn player_task(
                 samples = 0;
             }
             let mut i = 0;
-            let mut s_scaled_floor_udword = 0u32;
             for mut s in &mut buffer_initialised[(used/4)..((used/4)+(samples*2))] {
                 let mut f = *s;
                 let s_scaled = f * 32767f32;
                 let s_scaled_floor = s_scaled as i16;
-                if i % 2 == 0 {
-                    s_scaled_floor_udword = ( s_scaled_floor as u16 as u32 ) ;
-                } else {
-                    s_scaled_floor_udword |= ( ( s_scaled_floor as u16 as u32 ) * 0x10000u32 );
-                    let mut pcm : &mut u32 = unsafe { mem::transmute(s) };
-                    *pcm = s_scaled_floor_udword;
-                }
+                let s_scaled_floor_udword = ( s_scaled_floor as u16 as u32 ) ;
+                let mut pcm : &mut u32 = unsafe { mem::transmute(s) };
+                *pcm = s_scaled_floor_udword;
                 i += 1;
             }
             used += (i*4);
             read_buf.copy_within(decoded..read, 0);
         }
-
+        let mut dma_buffer : &mut [u32] = unsafe { mem::transmute(&mut *back_buffer) };
+        //// Collect every 2nd sample
+        for i in 0..(used/(4*2)) {
+            dma_buffer[i] = ( dma_buffer[i*2] * 0x10000u32) | ( dma_buffer[(i*2)+1] & 0xFFFF ) ;
+        }
+        used /= 2;
         dma_future.await;
         mem::swap(&mut back_buffer, &mut front_buffer);
-
     }
 
 }
