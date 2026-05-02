@@ -29,7 +29,7 @@ use {defmt_rtt as _, panic_probe as _};
 use nanomp3::Decoder;
 
 // For USB
-//use embassy_rp::{peripherals::USB, usb};
+use embassy_rp::{peripherals::USB, usb};
 
 // Bring your own wifi credentials and store it in auth.rs
 // pub const WIFI_NETWORK: &str = "AAAAAAA"; // change to your network SSID
@@ -40,7 +40,7 @@ bind_interrupts!(struct Irqs {
     PIO0_IRQ_0 => InterruptHandler<PIO0>;
     DMA_IRQ_0 => dma::InterruptHandler<DMA_CH0>, dma::InterruptHandler<DMA_CH1>;
     PIO1_IRQ_0 => InterruptHandler<PIO1>;
-    //USBCTRL_IRQ => usb::InterruptHandler<USB>;    
+    USBCTRL_IRQ => usb::InterruptHandler<USB>;    
 });
 
 const SAMPLE_RATE: u32 = 44100;
@@ -56,14 +56,14 @@ async fn cyw43_task(runner: cyw43::Runner<'static, cyw43::SpiBus<Output<'static>
 async fn net_task(mut runner: embassy_net::Runner<'static, cyw43::NetDriver<'static>>) -> ! {
     runner.run().await
 }
-/*
+
 #[embassy_executor::task]
 async fn logger_task(usb: embassy_rp::Peri<'static, embassy_rp::peripherals::USB>) {
     let driver = embassy_rp::usb::Driver::new(usb, Irqs);
 
     embassy_usb_logger::run!(1024, log::LevelFilter::Info, driver);
 }
-*/
+
 async fn player_task(
     pio : embassy_rp::Peri<'static, embassy_rp::peripherals::PIO1>,
     dma : embassy_rp::Peri<'static, embassy_rp::peripherals::DMA_CH1>,
@@ -159,13 +159,6 @@ async fn player_task(
 
     loop{
         profile_end = Instant::now().as_millis();
-        // log::info!("Playing {} bytes @ {:.3}Kbps with {} bytes queued", used,
-        //     (used as f32)/((profile_end - profile_start) as f32), socket.recv_queue(),);
-        // if let Some(f) = frame_info {
-        //     log::info!("{:?} with {decoded} bytes decoded and {} bytes buffered",f, read);
-        // } else {
-        //     log::info!("No decoder info.");
-        // }
         // PLAY SAMPLES
         let mut dma_buffer : &mut [u32] = unsafe { mem::transmute(&mut *front_buffer) };
         let dma_future = i2s.write(&dma_buffer[0..(used/4)]);
@@ -216,6 +209,13 @@ async fn player_task(
             dma_buffer[i] = ( dma_buffer[i*2] * 0x10000u32) | ( dma_buffer[(i*2)+1] & 0xFFFF ) ;
         }
         used /= 2;
+        log::info!("Playing {} bytes @ {:.3}Kbps with {} bytes queued", used,
+            (used as f32)/((profile_end - profile_start) as f32), socket.recv_queue(),);
+        if let Some(f) = frame_info {
+            log::info!("{:?} with {decoded} bytes decoded and {} bytes buffered",f, read);
+        } else {
+            log::info!("No decoder info.");
+        }
         dma_future.await;
         mem::swap(&mut back_buffer, &mut front_buffer);
     }
@@ -226,7 +226,7 @@ async fn player_task(
 async fn main(spawner: Spawner) {
 
     let p = embassy_rp::init(Default::default());
-    //spawner.must_spawn(logger_task(p.USB));
+    spawner.must_spawn(logger_task(p.USB));
     log::info!("Hello World!");
     
     let mut rng = RoscRng;
