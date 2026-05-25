@@ -15,18 +15,21 @@ use embassy_executor::Spawner;
 use embassy_net::tcp::TcpSocket;
 use embassy_sync::pipe::{Pipe, Reader, Writer};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_net::{Config, StackResources};
+use embassy_net::{Config, StackResources, Stack};
 use embassy_rp::clocks::RoscRng;
 use embassy_rp::gpio::{Level, Output};
 use embassy_rp::peripherals::{DMA_CH0, PIO0, DMA_CH1, PIO1};
 use embassy_rp::pio::{InterruptHandler, Pio};
 use embassy_rp::pio_programs::i2s::{PioI2sOut, PioI2sOutProgram};
-use embassy_rp::{bind_interrupts, dma};
+use embassy_rp::{bind_interrupts, dma, Peripherals};
 use embassy_time::{Duration, Timer, Instant};
 use embedded_io_async::Write;
 use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
 use nanomp3::Decoder;
+
+use core::result::Result as ResultCore;
+use core::future::Future;
 
 // For USB
 use embassy_rp::{peripherals::USB, usb};
@@ -64,13 +67,36 @@ async fn logger_task(usb: embassy_rp::Peri<'static, embassy_rp::peripherals::USB
     embassy_usb_logger::run!(1024, log::LevelFilter::Info, driver);
 }
 
+async fn create_socket<'c>(
+    stack : embassy_net::Stack<'c>,
+    mut rx_buffer : &'c mut [u8],
+    mut tx_buffer : &'c mut [u8]
+) ->  ResultCore<TcpSocket<'c>, ()> {
+
+    let mut socket = TcpSocket::new(stack, rx_buffer, tx_buffer);
+    socket.set_timeout(Some(Duration::from_secs(10)));
+
+    // control.gpio_set(0, false).await;
+    log::info!("Listening on TCP:1234...");
+    if let Err(e) = socket.accept(1234).await {
+        log::warn!("accept error: {:?}", e);
+        return Err(());
+    }
+
+    log::info!("Received connection at {:?}", socket.local_endpoint());
+//     control.gpio_set(0, true).await;
+    Ok(socket)
+}
+
 async fn player_task(
     pio : embassy_rp::Peri<'static, embassy_rp::peripherals::PIO1>,
     dma : embassy_rp::Peri<'static, embassy_rp::peripherals::DMA_CH1>,
     bit_clock_pin : embassy_rp::Peri<'static, embassy_rp::peripherals::PIN_27>,
     left_right_clock_pin : embassy_rp::Peri<'static, embassy_rp::peripherals::PIN_28>,
     data_pin :  embassy_rp::Peri<'static, embassy_rp::peripherals::PIN_3>,
-    mut socket: TcpSocket<'_>
+    stack : embassy_net::Stack<'_>,
+    rx_buffer : &mut [u8],
+    tx_buffer : &mut [u8]
 ) {
     // Setup pio state machine for i2s output
     let Pio { mut common, sm0, .. } = Pio::new(pio, Irqs);
@@ -89,6 +115,7 @@ async fn player_task(
         &program,
     );
     i2s.start();
+
     let mut read_buf : [u8;READ_SIZE] = [0u8;READ_SIZE];
     let mut used : usize = 0;   // bytes ( multiples of 4 )
     let mut read : usize = 0;
@@ -100,7 +127,6 @@ async fn player_task(
     let mut profile_end = 0;
 
     const BUFFER_SIZE : usize = 300*1024; // bytes
-    const THRESHOLD : usize = (BUFFER_SIZE / 2) - (nanomp3::MAX_SAMPLES_PER_FRAME*4); // bytes
     static READ_BUF_POOL: StaticCell<[MaybeUninit<u8>;BUFFER_SIZE]> = StaticCell::new();
     let mut buffer_static_unaligned = READ_BUF_POOL.init_with(|| [MaybeUninit::zeroed(); BUFFER_SIZE] );
     let (prefix, mut buffer_static, suffix) = unsafe { buffer_static_unaligned.align_to_mut::<MaybeUninit<f32>>() };
@@ -109,70 +135,18 @@ async fn player_task(
     log::info!("Player started with {}, {}, {}, {}, {} samples/frame ...", 
         prefix.len(), suffix.len(), front_buffer.len(), back_buffer.len(), nanomp3::MAX_SAMPLES_PER_FRAME);
 
-    while used < ( front_buffer.len()*4 - (nanomp3::MAX_SAMPLES_PER_FRAME*4) ) {
-        // READ MP3 DATA
-        profile_start = Instant::now().as_millis();
-        read = (read-decoded) + match socket.read(&mut read_buf[(read-decoded)..]).await {
-            Ok(0) => {
-                log::warn!("read EOF");
-                return;
-            }
-            Ok(n) => { log::warn!("read {} bytes, used {} bytes", n, used); n },
-            Err(e) => {
-                log::warn!("read error: {:?}", e);
-                return;
-            }
-        };
-        
-        // DECODE MP3 DATA
-        let mut buffer_initialised : &mut [f32] = unsafe { mem::transmute(&mut *front_buffer) };
-        let (decoded_t, frame_info_t) = decoder.decode(&read_buf[..read],&mut buffer_initialised[(used/4)..]);
-        frame_info = frame_info_t; decoded = decoded_t;
-        if let Some(f) = frame_info {
-            samples = f.samples_produced;
-            if f.sample_rate != SAMPLE_RATE {
-                log::warn!("Incompatible sample rate! Exiting...");
-                return;
-            }
-        } else {
-            samples = 0;
-        }
-        let mut i = 0;
-        for mut s in &mut buffer_initialised[(used/4)..((used/4)+(samples*2))] {
-            let mut f = *s;
-            let s_scaled = f * 32767f32;
-            let s_scaled_floor = s_scaled as i16;
-            let s_scaled_floor_udword = ( s_scaled_floor as u16 as u32 ) ;
-            let mut pcm : &mut u32 = unsafe { mem::transmute(s) };
-            *pcm = s_scaled_floor_udword;
-            i += 1;
-        }
-        used += (i*4);
-        read_buf.copy_within(decoded..read, 0);
-    }
-    let mut dma_buffer : &mut [u32] = unsafe { mem::transmute(&mut *front_buffer) };
-    //// Collect every 2nd sample
-    for i in 0..(used/(4*2)) {
-        dma_buffer[i] = ( dma_buffer[i*2] * 0x10000u32) | ( dma_buffer[(i*2)+1] & 0xFFFF ) ;
-    }
-    used /= 2;
-
-    loop{
-        profile_end = Instant::now().as_millis();
-        // PLAY SAMPLES
-        let mut dma_buffer : &mut [u32] = unsafe { mem::transmute(&mut *front_buffer) };
-        let dma_future = i2s.write(&dma_buffer[0..(used/4)]);
-
-        profile_start = Instant::now().as_millis();
-
+    'outer: loop {
         used = 0;
+        let value = create_socket(stack, rx_buffer, tx_buffer).await;
+        let mut socket = value.unwrap();
 
-        while used < ( back_buffer.len()*4 - (nanomp3::MAX_SAMPLES_PER_FRAME*4) ) {
+        while used < ( front_buffer.len()*4 - (nanomp3::MAX_SAMPLES_PER_FRAME*4) ) {
             // READ MP3 DATA
+            profile_start = Instant::now().as_millis();
             read = (read-decoded) + match socket.read(&mut read_buf[(read-decoded)..]).await {
                 Ok(0) => {
                     log::warn!("read EOF");
-                    0
+                    return;
                 }
                 Ok(n) => { log::warn!("read {} bytes, used {} bytes", n, used); n },
                 Err(e) => {
@@ -180,13 +154,17 @@ async fn player_task(
                     return;
                 }
             };
-
+            
             // DECODE MP3 DATA
-            let mut buffer_initialised : &mut [f32] = unsafe { mem::transmute(&mut *back_buffer) };
-            let (decoded_t, frame_t) = decoder.decode(&read_buf[..read],&mut buffer_initialised[(used/4)..]);
-            frame_info = frame_t; decoded = decoded_t;
+            let mut buffer_initialised : &mut [f32] = unsafe { mem::transmute(&mut *front_buffer) };
+            let (decoded_t, frame_info_t) = decoder.decode(&read_buf[..read],&mut buffer_initialised[(used/4)..]);
+            frame_info = frame_info_t; decoded = decoded_t;
             if let Some(f) = frame_info {
                 samples = f.samples_produced;
+                if f.sample_rate != SAMPLE_RATE {
+                    log::warn!("Incompatible sample rate! Exiting...");
+                    return;
+                }
             } else {
                 samples = 0;
             }
@@ -203,29 +181,82 @@ async fn player_task(
             used += (i*4);
             read_buf.copy_within(decoded..read, 0);
         }
-        let mut dma_buffer : &mut [u32] = unsafe { mem::transmute(&mut *back_buffer) };
+        let mut dma_buffer : &mut [u32] = unsafe { mem::transmute(&mut *front_buffer) };
         //// Collect every 2nd sample
         for i in 0..(used/(4*2)) {
             dma_buffer[i] = ( dma_buffer[i*2] * 0x10000u32) | ( dma_buffer[(i*2)+1] & 0xFFFF ) ;
         }
         used /= 2;
-        log::info!("Playing {} bytes @ {:.3}Kbps with {} bytes queued", used,
-            (used as f32)/((profile_end - profile_start) as f32), socket.recv_queue(),);
-        if let Some(f) = frame_info {
-            log::info!("{:?} with {decoded} bytes decoded and {} bytes buffered",f, read);
-        } else {
-            log::info!("No decoder info.");
-        }
-        dma_future.await;
-        mem::swap(&mut back_buffer, &mut front_buffer);
-    }
 
+        'inner: loop{
+            // PLAY SAMPLES
+            let mut dma_buffer : &mut [u32] = unsafe { mem::transmute(&mut *front_buffer) };
+            let dma_future = i2s.write(&dma_buffer[0..(used/4)]);
+
+            profile_start = Instant::now().as_millis();
+
+            used = 0;
+
+            while used < ( back_buffer.len()*4 - (nanomp3::MAX_SAMPLES_PER_FRAME*4) ) {
+                // READ MP3 DATA
+                read = (read-decoded) + match socket.read(&mut read_buf[(read-decoded)..]).await {
+                    Ok(0) => {
+                        log::warn!("read EOF");
+                        if decoded == read { continue 'outer; }
+                        0
+                    }
+                    Ok(n) => { log::warn!("read {} bytes, used {} bytes", n, used); n },
+                    Err(e) => {
+                        log::warn!("read error: {:?}", e);
+                        return;
+                    }
+                };
+
+                // DECODE MP3 DATA
+                let mut buffer_initialised : &mut [f32] = unsafe { mem::transmute(&mut *back_buffer) };
+                let (decoded_t, frame_t) = decoder.decode(&read_buf[..read],&mut buffer_initialised[(used/4)..]);
+                frame_info = frame_t; decoded = decoded_t;
+                if let Some(f) = frame_info {
+                    samples = f.samples_produced;
+                } else {
+                    samples = 0;
+                }
+                let mut i = 0;
+                for mut s in &mut buffer_initialised[(used/4)..((used/4)+(samples*2))] {
+                    let mut f = *s;
+                    let s_scaled = f * 32767f32;
+                    let s_scaled_floor = s_scaled as i16;
+                    let s_scaled_floor_udword = ( s_scaled_floor as u16 as u32 ) ;
+                    let mut pcm : &mut u32 = unsafe { mem::transmute(s) };
+                    *pcm = s_scaled_floor_udword;
+                    i += 1;
+                }
+                used += (i*4);
+                read_buf.copy_within(decoded..read, 0);
+            }
+            let mut dma_buffer : &mut [u32] = unsafe { mem::transmute(&mut *back_buffer) };
+            //// Collect every 2nd sample
+            for i in 0..(used/(4*2)) {
+                dma_buffer[i] = ( dma_buffer[i*2] * 0x10000u32) | ( dma_buffer[(i*2)+1] & 0xFFFF ) ;
+            }
+            used /= 2;
+            profile_end = Instant::now().as_millis();        
+            log::info!("Playing {} bytes @ {:.3}Kbps with {} bytes queued", used,
+                (used as f32)/((profile_end - profile_start) as f32), socket.recv_queue(),);
+            if let Some(f) = frame_info {
+                log::info!("{:?} with {decoded} bytes decoded and {} bytes buffered",f, read);
+            } else {
+                log::info!("No decoder info.");
+            }
+            dma_future.await;
+            mem::swap(&mut back_buffer, &mut front_buffer);
+        }
+    }
 }
 
-#[embassy_executor::main]
-async fn main(spawner: Spawner) {
+// #[embassy_executor::task]
+async fn idle(spawner: Spawner, p : Peripherals) {
 
-    let p = embassy_rp::init(Default::default());
     spawner.must_spawn(logger_task(p.USB));
     log::info!("Hello World!");
     
@@ -299,23 +330,25 @@ async fn main(spawner: Spawner) {
 
     log::info!("Setting up player at {}Hz", SAMPLE_RATE);
 
-    let mut socket = TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);
-    socket.set_timeout(Some(Duration::from_secs(10)));
+    // let mut socket = TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);
+    // socket.set_timeout(Some(Duration::from_secs(10)));
 
-    control.gpio_set(0, false).await;
-    log::info!("Listening on TCP:1234...");
-    if let Err(e) = socket.accept(1234).await {
-        log::warn!("accept error: {:?}", e);
-        return;
-    }
+    // control.gpio_set(0, false).await;
+    // log::info!("Listening on TCP:1234...");
+    // if let Err(e) = socket.accept(1234).await {
+    //     log::warn!("accept error: {:?}", e);
+    //     return;
+    // }
 
-    log::info!("Received connection at {:?}", socket.local_endpoint());
-    control.gpio_set(0, true).await;
+    // log::info!("Received connection at {:?}", socket.local_endpoint());
+    // control.gpio_set(0, true).await;
 
-    player_task(p.PIO1, p.DMA_CH1, p.PIN_27, p.PIN_28, p.PIN_3 ,socket).await;
+    player_task(p.PIO1, p.DMA_CH1, p.PIN_27, p.PIN_28, p.PIN_3, stack, &mut rx_buffer, &mut tx_buffer).await;
 
-    loop {
-        Timer::after_millis(500).await;
-    }
+}
 
+#[embassy_executor::main]
+async fn main(spawner: Spawner) {
+    let p = embassy_rp::init(Default::default());
+    idle(spawner, p).await;
 }
