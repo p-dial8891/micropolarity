@@ -123,6 +123,7 @@ async fn player_task(
     let mut frame_info : Option<nanomp3::FrameInfo> = None;
     let mut decoded : usize = 0;
     let mut samples : usize = 0;
+    let mut stream_end = false;
     let mut profile_start = 0;
     let mut profile_end = 0;
 
@@ -137,6 +138,7 @@ async fn player_task(
 
     'outer: loop {
         used = 0;
+        log::warn!("Creating socket.");
         let value = create_socket(stack, rx_buffer, tx_buffer).await;
         let mut socket = value.unwrap();
 
@@ -202,13 +204,13 @@ async fn player_task(
                 read = (read-decoded) + match socket.read(&mut read_buf[(read-decoded)..]).await {
                     Ok(0) => {
                         log::warn!("read EOF");
-                        if decoded == read { continue 'outer; }
+                        stream_end = true;
                         0
                     }
                     Ok(n) => { log::warn!("read {} bytes, used {} bytes", n, used); n },
                     Err(e) => {
                         log::warn!("read error: {:?}", e);
-                        return;
+                        continue 'outer; 
                     }
                 };
 
@@ -233,6 +235,14 @@ async fn player_task(
                 }
                 used += (i*4);
                 read_buf.copy_within(decoded..read, 0);
+                if stream_end && decoded == 0 {
+                    log::warn!("Ending playback.");
+                    stream_end = false;
+                    socket.write(&[1]).await.unwrap();
+                    socket.close();
+                    socket.flush().await.unwrap();
+                    continue 'outer;
+                }
             }
             let mut dma_buffer : &mut [u32] = unsafe { mem::transmute(&mut *back_buffer) };
             //// Collect every 2nd sample
