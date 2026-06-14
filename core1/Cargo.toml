@@ -1,0 +1,12 @@
+[package]
+name = "core1"
+version = "0.0.1"
+edition = "2024"
+
+[dependencies]
+# Cortex-M 
+cortex-m = "0.7.7"
+cortex-m-rt = "0.7.5"
+rp235x-hal = "0.4.0"
+
+
