@@ -2,15 +2,16 @@
 #![no_main]
 
 //use cortex_m_rt::entry;
-use rp235x_hal as hal;
+//use rp235x_hal as hal;
 //use embassy_rp::block::ImageDef;
+use embassy_executor::Spawner;
 
 // Use the absolute scratchpad memory window configured in memory.x
 const HANDSHAKE_ADDR: *mut u32 = 0x2008_0000 as *mut u32;
 
-#[unsafe(link_section = ".start_block")]
-#[used]
-pub static IMAGE_DEF: hal::block::ImageDef = hal::block::ImageDef::secure_exe();
+// #[unsafe(link_section = ".start_block")]
+// #[used]
+// pub static IMAGE_DEF: hal::block::ImageDef = hal::block::ImageDef::secure_exe();
 
 #[inline(always)]
 fn is_core1_secure() -> bool {
@@ -28,8 +29,8 @@ fn is_core1_secure() -> bool {
 // If you want to log before even reaching main, you can track the reset handler.
 // For now, we capture right inside the native main entry.
 
-#[hal::entry]
-fn main() -> ! {
+#[embassy_executor::main]
+async fn main(spawner: Spawner) -> ! {
     // 1. SIGNAL STAGE 1: Core 1 has successfully jumped into Rust code space!
     unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0x1111_1111); }
 
@@ -43,7 +44,7 @@ fn main() -> ! {
     unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0x2222_2222); }
 
     // Initialize your peripherals safely
-    //let _peripherals = embassy_rp::init(Default::default());
+    let _peripherals = embassy_rp::init(Default::default());
 
     // 4. SIGNAL STAGE 3: System initialized, entering execution loop
     unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0x3333_3333); }
