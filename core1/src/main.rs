@@ -29,8 +29,30 @@ fn is_core1_secure() -> bool {
 // If you want to log before even reaching main, you can track the reset handler.
 // For now, we capture right inside the native main entry.
 
-#[embassy_executor::main]
-async fn main(spawner: Spawner) -> ! {
+//#[embassy_executor::main(executor = "embassy_rp::executor::Executor",  entry = "cortex_m_rt::entry")]
+#[embassy_executor::task]
+async fn core1_async_loop(spawner: Spawner) -> ! {
+
+    // 2. Initialize the RP2350 embassy peripherals architecture 
+    let peripherals = embassy_rp::init(Default::default());
+
+    loop {
+        core::hint::spin_loop();
+    }
+}
+
+#[panic_handler]
+fn panic(_info: &core::panic::PanicInfo) -> ! {
+    loop { core::hint::spin_loop(); }
+}
+
+use embassy_rp::executor::Executor;
+use static_cell::StaticCell;
+
+static EXECUTOR: StaticCell<Executor> = StaticCell::new();
+
+#[cortex_m_rt::entry]
+fn main() -> ! {
     // 1. SIGNAL STAGE 1: Core 1 has successfully jumped into Rust code space!
     unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0x1111_1111); }
 
@@ -56,12 +78,9 @@ async fn main(spawner: Spawner) -> ! {
         unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0x0045c111); } // Hex "NS-1"
     }
 
-    loop {
-        core::hint::spin_loop();
-    }
-}
-
-#[panic_handler]
-fn panic(_info: &core::panic::PanicInfo) -> ! {
-    loop { core::hint::spin_loop(); }
+    // 3. Manually spin up the Thread-Mode Executor
+    let executor = EXECUTOR.init(Executor::new());
+    executor.run(|spawner| {
+        spawner.spawn(core1_async_loop(spawner).unwrap());
+    });
 }
