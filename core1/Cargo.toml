@@ -4,8 +4,8 @@ version = "0.0.1"
 edition = "2024"
 
 [dependencies]
-cortex-m = "0.7.7"
-cortex-m-rt = "0.7.5"
+cortex-m = "0.7.2"
+cortex-m-rt = "0.7"
 embassy-executor = { version = "0.10.0", features = [
 #  "platform-cortex-m",
 #  "executor-thread",

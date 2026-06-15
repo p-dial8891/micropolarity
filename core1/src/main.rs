@@ -53,6 +53,27 @@ static EXECUTOR: StaticCell<Executor> = StaticCell::new();
 
 #[cortex_m_rt::entry]
 fn main() -> ! {
+    unsafe {
+        const SIO_BASE: u32 = 0xd0000000;
+        const SPINLOCK0_PTR: *mut u32 = (SIO_BASE + 0x100) as *mut u32;
+        const SPINLOCK_COUNT: usize = 32;
+        for i in 0..SPINLOCK_COUNT {
+            SPINLOCK0_PTR.wrapping_add(i).write_volatile(1);
+        }
+        // Enable the Double-Co-Pro and the GPIO Co-Pro in the CPACR register.
+        // We have to do this early, before there's a chance we might call
+        // any accelerated functions.
+        const SCB_CPACR_PTR: *mut u32 = 0xE000_ED88 as *mut u32;
+        const SCB_CPACR_FULL_ACCESS: u32 = 0b11;
+        // Do a R-M-W, because the FPU enable is here and that's already been enabled
+        let mut temp = SCB_CPACR_PTR.read_volatile();
+        // DCP Co-Pro is 4, two-bits per entry
+        temp |= SCB_CPACR_FULL_ACCESS << (4 * 2);
+        // GPIO Co-Pro is 0, two-bits per entry
+        temp |= SCB_CPACR_FULL_ACCESS << (0 * 2);
+        SCB_CPACR_PTR.write_volatile(temp);
+
+    }
     // 1. SIGNAL STAGE 1: Core 1 has successfully jumped into Rust code space!
     unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0x1111_1111); }
 
@@ -66,7 +87,7 @@ fn main() -> ! {
     unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0x2222_2222); }
 
     // Initialize your peripherals safely
-    let _peripherals = embassy_rp::init(Default::default());
+    //let _peripherals = embassy_rp::init(Default::default());
 
     // 4. SIGNAL STAGE 3: System initialized, entering execution loop
     unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0x3333_3333); }
@@ -81,6 +102,7 @@ fn main() -> ! {
     // 3. Manually spin up the Thread-Mode Executor
     let executor = EXECUTOR.init(Executor::new());
     executor.run(|spawner| {
-        spawner.spawn(core1_async_loop(spawner).unwrap());
+        // spawner.spawn(core1_async_loop(spawner).unwrap());
     });
+
 }
