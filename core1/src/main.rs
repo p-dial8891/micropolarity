@@ -34,7 +34,7 @@ fn is_core1_secure() -> bool {
 async fn core1_async_loop(spawner: Spawner) -> ! {
 
     // 2. Initialize the RP2350 embassy peripherals architecture 
-    let peripherals = embassy_rp::init(Default::default());
+    //let peripherals = embassy_rp::init(Default::default());
 
     loop {
         core::hint::spin_loop();
@@ -86,17 +86,25 @@ fn main() -> ! {
     // 3. SIGNAL STAGE 2: Memory mapped vectors are isolated, starting system init
     unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0x2222_2222); }
 
-    // Initialize your peripherals safely
-    //let _peripherals = embassy_rp::init(Default::default());
-
     // 4. SIGNAL STAGE 3: System initialized, entering execution loop
     unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0x3333_3333); }
 
-    // Modify your RAM handshake logic to output the result:
-    if is_core1_secure() {
-        unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0x5EC07111); } // Hex "SEC-1"
-    } else {
-        unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0x0045c111); } // Hex "NS-1"
+    // // Modify your RAM handshake logic to output the result:
+    // if is_core1_secure() {
+    //     unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0x5EC07111); } // Hex "SEC-1"
+    // } else {
+    //     unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0x0045c111); } // Hex "NS-1"
+    // }
+
+    // Bring up the Embassy RP drivers (using existing C++ clock trees)
+    let p = unsafe { embassy_rp::Peripherals::steal() } ;
+    let g = embassy_rp::gpio::Input::new(p.PIN_2, embassy_rp::gpio::Pull::Up);
+    loop {
+        if g.is_low() {
+            unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0x6EC07111); }
+        } else {
+            unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0x7EC07111); }
+        }
     }
 
     // 3. Manually spin up the Thread-Mode Executor

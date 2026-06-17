@@ -14,7 +14,7 @@ embassy-executor = { version = "0.10.0", features = [
 embassy-rp = { 
     version = "0.10.0", 
     default-features = false, 
-    features = ["executor-thread", "rp235xa", "critical-section-impl", "imagedef-secure-exe"],
+    features = ["rt", "multicore", "executor-thread", "rp235xa", "critical-section-impl", "imagedef-secure-exe"],
     path = "../embassy/embassy-rp"
 }
 static_cell = "2.1.1"

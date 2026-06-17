@@ -216,6 +216,12 @@ int main() {
                 case 0x0045c111:
                     printf("[Core 1 Sync]: SUCCESS! Core 1 is running in non-secure mode.\n");
                     break;
+                case 0x6EC07111:
+                    printf("[Core 1 Sync]: SUCCESS! Core 1 detected key press.\n");
+                    break;
+                case 0x7EC07111:
+                    printf("[Core 1 Sync]: SUCCESS! Core 1 detected key release.\n");
+                    break;
                 default:
                     // If you see a completely random address value here, Core 1 hard-faulted
                     // and printed its stack trace memory markers over the handshake window.
