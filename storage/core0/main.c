@@ -216,6 +216,12 @@ int main() {
                 case 0x0045c111:
                     printf("[Core 1 Sync]: SUCCESS! Core 1 is running in non-secure mode.\n");
                     break;
+                case 0x4EC07111:
+                    printf("[Core 1 Sync]: SUCCESS! Core 1 toggle on.\n");
+                    break;
+                case 0x5EC07111:
+                    printf("[Core 1 Sync]: SUCCESS! Core 1 toggle off.\n");
+                    break;
                 case 0x6EC07111:
                     printf("[Core 1 Sync]: SUCCESS! Core 1 detected key press.\n");
                     break;

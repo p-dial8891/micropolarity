@@ -5,6 +5,7 @@
 //use rp235x_hal as hal;
 //use embassy_rp::block::ImageDef;
 use embassy_executor::Spawner;
+use embassy_time::{Duration, Timer};
 
 // Use the absolute scratchpad memory window configured in memory.x
 const HANDSHAKE_ADDR: *mut u32 = 0x2008_0000 as *mut u32;
@@ -35,9 +36,15 @@ async fn core1_async_loop(spawner: Spawner) -> ! {
 
     // 2. Initialize the RP2350 embassy peripherals architecture 
     //let peripherals = embassy_rp::init(Default::default());
-
+    let mut toggle = false;
     loop {
-        core::hint::spin_loop();
+        Timer::after(Duration::from_millis(2000)).await;
+        if toggle {
+            unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0x4EC07111); }
+        } else {
+            unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0x5EC07111); }
+        }
+        toggle = !toggle;
     }
 }
 
@@ -110,7 +117,7 @@ fn main() -> ! {
     // 3. Manually spin up the Thread-Mode Executor
     let executor = EXECUTOR.init(Executor::new());
     executor.run(|spawner| {
-        // spawner.spawn(core1_async_loop(spawner).unwrap());
+        //spawner.spawn(core1_async_loop(spawner).unwrap());
     });
 
 }

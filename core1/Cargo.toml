@@ -6,16 +6,25 @@ edition = "2024"
 [dependencies]
 cortex-m = "0.7.2"
 cortex-m-rt = "0.7"
-embassy-executor = { version = "0.10.0", features = [
-#  "platform-cortex-m",
-#  "executor-thread",
-#  "executor-interrupt"
-]}
+embassy-executor = { 
+    version = "0.10.0", 
+    features = [
+        #  "platform-cortex-m",
+        #  "executor-thread",
+        #  "executor-interrupt"
+    ],
+    path = "../embassy/embassy-executor"
+}
 embassy-rp = { 
     version = "0.10.0", 
     default-features = false, 
-    features = ["rt", "multicore", "executor-thread", "rp235xa", "critical-section-impl", "imagedef-secure-exe"],
+    features = ["rt", "multicore", "executor-thread", "rp235xa", "critical-section-impl", "imagedef-secure-exe",
+    "time-driver"],
     path = "../embassy/embassy-rp"
+}
+embassy-time = {
+    version = "0.5.1",
+    path = "../embassy/embassy-time"
 }
 static_cell = "2.1.1"
 #rp235x-hal = "0.4.0"
