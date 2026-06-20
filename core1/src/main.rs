@@ -1,11 +1,10 @@
 #![no_std]
 #![no_main]
 
-//use cortex_m_rt::entry;
-//use rp235x_hal as hal;
-//use embassy_rp::block::ImageDef;
-//use embassy_executor::Spawner;
 use embassy_time::{Duration, Timer};
+// For USB
+use embassy_rp::{peripherals::USB, usb};
+use embassy_rp::{bind_interrupts, dma};
 
 // Use the absolute scratchpad memory window configured in memory.x
 const HANDSHAKE_ADDR: *mut u32 = 0x2008_0000 as *mut u32;
@@ -13,6 +12,17 @@ const HANDSHAKE_ADDR: *mut u32 = 0x2008_0000 as *mut u32;
 // #[unsafe(link_section = ".start_block")]
 // #[used]
 // pub static IMAGE_DEF: hal::block::ImageDef = hal::block::ImageDef::secure_exe();
+
+bind_interrupts!(struct Irqs {
+    USBCTRL_IRQ => usb::InterruptHandler<USB>;    
+});
+
+#[embassy_executor::task]
+async fn logger_task(usb: embassy_rp::Peri<'static, embassy_rp::peripherals::USB>) {
+    let driver = embassy_rp::usb::Driver::new(usb, Irqs);
+
+    embassy_usb_logger::run!(1024, log::LevelFilter::Info, driver);
+}
 
 #[inline(always)]
 fn is_core1_secure() -> bool {
@@ -36,13 +46,16 @@ async fn core1_async_loop() {
 
     // 2. Initialize the RP2350 embassy peripherals architecture 
     //let peripherals = embassy_rp::init(Default::default());
+    log::info!("async loop started...");
     let mut toggle = false;
     loop {
         Timer::after(Duration::from_millis(2000)).await;
         if toggle {
             unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0x4EC07111); }
+            log::info!("async loop processing...");
         } else {
             unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0x5EC07111); }
+            log::info!("async loop processing...");
         }
         toggle = !toggle;
     }
@@ -125,6 +138,7 @@ fn main() -> ! {
     // 3. Manually spin up the Thread-Mode Executor
     let executor = EXECUTOR.init(Executor::new());
     executor.run(|spawner| {
+        spawner.spawn(logger_task(p.USB).unwrap());
         spawner.spawn(core1_async_loop().unwrap());
     });
 

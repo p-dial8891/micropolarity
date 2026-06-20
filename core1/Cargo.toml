@@ -26,5 +26,10 @@ embassy-time = {
     version = "0.5.1",
     path = "../embassy/embassy-time"
 }
+embassy-usb-logger = {
+    version = "0.6.0",
+    path = "../embassy/embassy-usb-logger"
+}
+log = "0.4.32"
 static_cell = "2.1.1"
 #rp235x-hal = "0.4.0"
