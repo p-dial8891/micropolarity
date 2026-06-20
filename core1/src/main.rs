@@ -4,7 +4,7 @@
 //use cortex_m_rt::entry;
 //use rp235x_hal as hal;
 //use embassy_rp::block::ImageDef;
-use embassy_executor::Spawner;
+//use embassy_executor::Spawner;
 use embassy_time::{Duration, Timer};
 
 // Use the absolute scratchpad memory window configured in memory.x
@@ -32,7 +32,7 @@ fn is_core1_secure() -> bool {
 
 //#[embassy_executor::main(executor = "embassy_rp::executor::Executor",  entry = "cortex_m_rt::entry")]
 #[embassy_executor::task]
-async fn core1_async_loop(spawner: Spawner) -> ! {
+async fn core1_async_loop() {
 
     // 2. Initialize the RP2350 embassy peripherals architecture 
     //let peripherals = embassy_rp::init(Default::default());
@@ -46,6 +46,7 @@ async fn core1_async_loop(spawner: Spawner) -> ! {
         }
         toggle = !toggle;
     }
+    // unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0x4EC07111); }
 }
 
 #[panic_handler]
@@ -53,7 +54,7 @@ fn panic(_info: &core::panic::PanicInfo) -> ! {
     loop { core::hint::spin_loop(); }
 }
 
-use embassy_rp::executor::Executor;
+use embassy_executor::Executor;
 use static_cell::StaticCell;
 
 static EXECUTOR: StaticCell<Executor> = StaticCell::new();
@@ -93,6 +94,15 @@ fn main() -> ! {
     // 3. SIGNAL STAGE 2: Memory mapped vectors are isolated, starting system init
     unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0x2222_2222); }
 
+    // Bring up the Embassy RP drivers (using existing C++ clock trees)
+    // let p = unsafe { embassy_rp::Peripherals::steal() } ;
+    let p = embassy_rp::init_without_clocks();
+    // unsafe { 
+    //     embassy_rp::time_driver::init(); 
+    //     embassy_rp::dma::init();
+    //     embassy_rp::gpio::init();
+    // }
+
     // 4. SIGNAL STAGE 3: System initialized, entering execution loop
     unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0x3333_3333); }
 
@@ -103,21 +113,19 @@ fn main() -> ! {
     //     unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0x0045c111); } // Hex "NS-1"
     // }
 
-    // Bring up the Embassy RP drivers (using existing C++ clock trees)
-    let p = unsafe { embassy_rp::Peripherals::steal() } ;
-    let g = embassy_rp::gpio::Input::new(p.PIN_2, embassy_rp::gpio::Pull::Up);
-    loop {
-        if g.is_low() {
-            unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0x6EC07111); }
-        } else {
-            unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0x7EC07111); }
-        }
-    }
+    // let g = embassy_rp::gpio::Input::new(p.PIN_2, embassy_rp::gpio::Pull::Up);
+    // loop {
+    //     if g.is_low() {
+    //         unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0x6EC07111); }
+    //     } else {
+    //         unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0x7EC07111); }
+    //     }
+    // }
 
     // 3. Manually spin up the Thread-Mode Executor
     let executor = EXECUTOR.init(Executor::new());
     executor.run(|spawner| {
-        //spawner.spawn(core1_async_loop(spawner).unwrap());
+        spawner.spawn(core1_async_loop().unwrap());
     });
 
 }

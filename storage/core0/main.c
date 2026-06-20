@@ -181,6 +181,7 @@ int main() {
     //rust_entry_address |= 1;
 
     printf("Rust Vector Table Address: 0x%08X\n", RUST_FLASH_ORIGIN);
+    printf("Extracted Core 1 Stack Pointer: 0x%08X\n", rust_stack_pointer);
     printf("Extracted Core 1 Entry Point: 0x%08X\n", rust_entry_address);
 
     // 3. Fire the launch sequence
@@ -210,12 +211,12 @@ int main() {
                 case 0x33333333:
                     printf("[Core 1 Sync]: SUCCESS! Core 1 completed init and is running.\n");
                     break;
-                case 0x5EC07111:
-                    printf("[Core 1 Sync]: SUCCESS! Core 1 is running in secure mode.\n");
-                    break;
-                case 0x0045c111:
-                    printf("[Core 1 Sync]: SUCCESS! Core 1 is running in non-secure mode.\n");
-                    break;
+                // case 0x5EC07111:
+                //     printf("[Core 1 Sync]: SUCCESS! Core 1 is running in secure mode.\n");
+                //     break;
+                // case 0x0045c111:
+                //     printf("[Core 1 Sync]: SUCCESS! Core 1 is running in non-secure mode.\n");
+                //     break;
                 case 0x4EC07111:
                     printf("[Core 1 Sync]: SUCCESS! Core 1 toggle on.\n");
                     break;
