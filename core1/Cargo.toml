@@ -30,6 +30,14 @@ embassy-usb-logger = {
     version = "0.6.0",
     path = "../embassy/embassy-usb-logger"
 }
+cyw43 = { 
+    version = "0.7.0",
+    path = "../embassy/cyw43"
+}
+cyw43-pio = { 
+    version = "0.10.0",
+    path = "../embassy/cyw43-pio"
+}
 log = "0.4.32"
 static_cell = "2.1.1"
 #rp235x-hal = "0.4.0"

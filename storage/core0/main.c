@@ -49,6 +49,8 @@ static sd_sdio_if_t sdio_if = {
         D2_gpio = D0_gpio + 2;
         D3_gpio = D0_gpio + 3;
     */
+    .DMA_IRQ_num = DMA_IRQ_1,
+    .SDIO_PIO = pio2,
     .CMD_gpio = 18,
     .D0_gpio = 19,
     .baud_rate = 125 * 1000 * 1000 / 6  // 20833333 Hz
@@ -109,26 +111,9 @@ void direct_boot_core1(uint32_t entry_addr, uint32_t stack_ptr, uint32_t vtor) {
  *
  */
 int main() {
-#if 0
-    // 1. Core 0 initializes hardware...
     stdio_init_all();
-
-    // 2. Fetch the Reset Vector pointer from the offset Rust Flash binary
-    uint32_t* rust_vector_table = (uint32_t*)RUST_FLASH_ORIGIN;
-    uint32_t rust_entry_point = rust_vector_table[1]; 
-
-    // FORCE THE THUMB BIT TO BE HIGH (OR LOGICAL TRAP)
-    if ((rust_entry_point & 1) == 0) {
-        rust_entry_point |= 1; 
-    }
-    // 3. Launch Core 1, pointing it to the exact Rust vector table, stack, and entry point
-    multicore_launch_core1_raw(
-        (void (*)())rust_entry_point,   // Core 1 entry address
-        (uint32_t*)RUST_RAM_END,       // Core 1 initial stack pointer
-        RUST_FLASH_ORIGIN              // Core 1 VTOR address (0x10200000)
-    );
-#endif
-#if 0
+    sleep_ms(2000); // Wait for serial monitor to connect
+#if 1
     puts("Hello, world!");
 
     // See FatFs - Generic FAT Filesystem Module, "Application Interface",
@@ -158,15 +143,14 @@ int main() {
     }
 
     f_unmount("");
-
+#if 0
     puts("Goodbye, world!");
     for (;;) {
         puts("Goodbye, world!");
         sleep_ms(1000);
     }
 #endif
-    stdio_init_all();
-    sleep_ms(2000); // Wait for serial monitor to connect
+#endif
     printf("\n--- Starting Multicore Handshake Monitor ---\n");
 
     // 1. Force state to RESET
@@ -239,4 +223,3 @@ int main() {
         sleep_ms(50);
     }
 }
-
