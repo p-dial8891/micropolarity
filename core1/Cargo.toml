@@ -40,4 +40,6 @@ cyw43-pio = {
 }
 log = "0.4.32"
 static_cell = "2.1.1"
+critical-section = "1.2.0"
+rp-pac = { version = "7.0.0" }
 #rp235x-hal = "0.4.0"

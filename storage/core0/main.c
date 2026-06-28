@@ -13,6 +13,7 @@ specific language governing permissions and limitations under the License.
 */
 
 #include <stdio.h>
+#include <stdint.h>
 //
 #include "pico/stdlib.h"
 //
@@ -30,6 +31,8 @@ https://github.com/carlk3/no-OS-FatFS-SD-SDIO-SPI-RPi-Pico/tree/main#customizing
 */
 
 #include "hw_config.h"
+
+extern bool ring_buffer_push(uint8_t byte);
 
 #define HANDSHAKE_ADDR      ((volatile uint32_t*)0x20080000)
 // RP2350 updated origins based on the new memory partition
@@ -174,6 +177,12 @@ int main() {
     multicore_launch_core1_raw((void (*)())rust_entry_address, (uint32_t*)rust_stack_pointer, RUST_FLASH_ORIGIN);
     //direct_boot_core1(rust_entry_address, rust_stack_pointer, RUST_FLASH_ORIGIN);
 
+    ring_buffer_init();
+    gpio_init(2);
+    gpio_pull_up(2);
+    gpio_set_dir(2, GPIO_IN);
+
+    bool latch = false;
     // 4. Trace the handshake transitions
     uint32_t last_state = 0xFFFFFFFF;
     while (1) {
@@ -220,6 +229,20 @@ int main() {
                     break;
             }
         }
+
+        if ((gpio_get(2) == 0)) {
+            // Fire Doorbell 0 to alert Core 1.
+            // Writing a 1 to bit 0 sets the doorbell flag for the opposite core.
+            latch = true;
+            ring_buffer_push(0x42);
+            sio_hw->doorbell_out_set = (1UL << 0); 
+        }
+        if (latch) {
+            ring_buffer_push(0x42);
+        }
+
         sleep_ms(50);
     }
 }
+
+

@@ -10,6 +10,11 @@ use cyw43_pio::{PioSpi, RM2_CLOCK_DIVIDER};
 use embassy_rp::peripherals::{DMA_CH0, PIO1};
 use embassy_rp::pio::{InterruptHandler, Pio};
 use embassy_rp::gpio::{Level, Output};
+use embassy_rp::interrupt::{self, InterruptExt};
+use embassy_rp::interrupt::typelevel::{Binding, Handler};
+use crate::ring_buffer::CORE1_WAKER;
+
+mod ring_buffer;
 
 // Use the absolute scratchpad memory window configured in memory.x
 const HANDSHAKE_ADDR: *mut u32 = 0x2008_0000 as *mut u32;
@@ -21,8 +26,35 @@ const HANDSHAKE_ADDR: *mut u32 = 0x2008_0000 as *mut u32;
 bind_interrupts!(struct Irqs {
     PIO1_IRQ_0 => InterruptHandler<PIO1>;
     DMA_IRQ_0 => dma::InterruptHandler<DMA_CH0>;
-    USBCTRL_IRQ => usb::InterruptHandler<USB>;    
+    USBCTRL_IRQ => usb::InterruptHandler<USB>;
+    SIO_IRQ_BELL => SioInterruptHandler;
 });
+
+#[derive(Copy, Clone)]
+struct SioInterruptHandler;
+
+impl Handler<interrupt::typelevel::SIO_IRQ_BELL> for SioInterruptHandler {
+    unsafe fn on_interrupt() {
+        // Clear the hardware FIFO flag by reading the raw SIO register
+        let sio = rp_pac::SIO;
+
+                // Read which doorbells are active
+        let active_doorbells = sio.doorbell_in_clr().read();
+        
+        // Check if Doorbell 0 caused this interrupt
+        if (active_doorbells.doorbell_in_clr() & (1 << 0)) != 0 {
+            // Clear Doorbell 0 so the interrupt line drops back to low
+            sio.doorbell_in_clr().write_value(rp_pac::sio::regs::DoorbellInClr(1 << 0));
+            
+            // Wake any suspended Embassy tasks awaiting buffer elements
+            critical_section::with(|cs| {
+                if let Some(waker) = CORE1_WAKER.borrow(cs).borrow_mut().take() {
+                    waker.wake();
+                }
+            });
+        }
+    }
+}
 
 #[embassy_executor::task]
 async fn cyw43_task(runner: cyw43::Runner<'static, cyw43::SpiBus<Output<'static>, PioSpi<'static, PIO1, 0>>>) -> ! {
@@ -35,6 +67,17 @@ async fn logger_task(usb: embassy_rp::Peri<'static, embassy_rp::peripherals::USB
 
     embassy_usb_logger::run!(1024, log::LevelFilter::Info, driver);
 }
+
+#[embassy_executor::task]
+async fn core1_consumer_task() {
+    let reader = ring_buffer::AsyncRingBufferReader::new();
+    loop {
+        let byte = reader.read_byte().await; // Suspends perfectly without burning CPU!
+        // Handle your processing logic here...
+        log::info!("Doorbell rang. Byte received {}", byte);
+    }
+}
+
 
 #[inline(always)]
 fn is_core1_secure() -> bool {
@@ -207,6 +250,10 @@ fn main() -> ! {
     //         unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0x7EC07111); }
     //     }
     // }
+    unsafe {
+        //interrupt::SIO_IRQ_PROC1.bind(SioInterruptHandler);
+        interrupt::SIO_IRQ_BELL.enable();
+    }
 
     // 3. Manually spin up the Thread-Mode Executor
     let executor = EXECUTOR.init(Executor::new());
@@ -222,5 +269,7 @@ fn main() -> ! {
             p.PIO1, 
             p.DMA_CH0)
         .unwrap());
+        spawner.spawn(core1_consumer_task().unwrap());
     });
+
 }
