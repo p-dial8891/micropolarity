@@ -12,7 +12,10 @@ use embassy_rp::pio::{InterruptHandler, Pio};
 use embassy_rp::gpio::{Level, Output};
 use embassy_rp::interrupt::{self, InterruptExt};
 use embassy_rp::interrupt::typelevel::{Binding, Handler};
-use crate::ring_buffer::CORE1_WAKER;
+use crate::ring_buffer::CORE1_TERMINATE;
+use critical_section::Mutex;
+use core::cell::RefCell;
+use core::task::{Poll};
 
 mod ring_buffer;
 
@@ -38,7 +41,7 @@ impl Handler<interrupt::typelevel::SIO_IRQ_BELL> for SioInterruptHandler {
         // Clear the hardware FIFO flag by reading the raw SIO register
         let sio = rp_pac::SIO;
 
-                // Read which doorbells are active
+        // Read which doorbells are active
         let active_doorbells = sio.doorbell_in_clr().read();
         
         // Check if Doorbell 0 caused this interrupt
@@ -48,9 +51,7 @@ impl Handler<interrupt::typelevel::SIO_IRQ_BELL> for SioInterruptHandler {
             
             // Wake any suspended Embassy tasks awaiting buffer elements
             critical_section::with(|cs| {
-                if let Some(waker) = CORE1_WAKER.borrow(cs).borrow_mut().take() {
-                    waker.wake();
-                }
+                CORE1_TERMINATE.borrow(cs).replace(Some(()));
             });
         }
     }
@@ -70,14 +71,25 @@ async fn logger_task(usb: embassy_rp::Peri<'static, embassy_rp::peripherals::USB
 
 #[embassy_executor::task]
 async fn core1_consumer_task() {
-    let reader = ring_buffer::AsyncRingBufferReader::new();
+    log::info!("Starting consumer task.");
+    let rb = ring_buffer::AsyncRingBufferReader::new();
     loop {
-        let byte = reader.read_byte().await; // Suspends perfectly without burning CPU!
-        // Handle your processing logic here...
-        log::info!("Doorbell rang. Byte received {}", byte);
+        let mut f = None;
+        critical_section::with(|cs| {
+            f = *CORE1_TERMINATE.borrow(cs).borrow_mut();      
+        });
+        if f == Some(()) {
+            log::info!("Doorbell rang. Terminating receive.");
+            return;
+        }
+        else {
+            if let Some(byte) = rb.try_pop() {
+                log::info!("Byte received: {}", byte);
+            }
+            Timer::after(Duration::from_millis(500)).await;
+        }
     }
 }
-
 
 #[inline(always)]
 fn is_core1_secure() -> bool {

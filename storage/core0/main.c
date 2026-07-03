@@ -230,15 +230,13 @@ int main() {
             }
         }
 
+        ring_buffer_push(0x42);
         if ((gpio_get(2) == 0)) {
             // Fire Doorbell 0 to alert Core 1.
             // Writing a 1 to bit 0 sets the doorbell flag for the opposite core.
-            latch = true;
-            ring_buffer_push(0x42);
+            // latch = true;
+            // ring_buffer_push(0x42);
             sio_hw->doorbell_out_set = (1UL << 0); 
-        }
-        if (latch) {
-            ring_buffer_push(0x42);
         }
 
         sleep_ms(50);
