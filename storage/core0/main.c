@@ -32,7 +32,9 @@ https://github.com/carlk3/no-OS-FatFS-SD-SDIO-SPI-RPi-Pico/tree/main#customizing
 
 #include "hw_config.h"
 
-extern bool ring_buffer_push(uint8_t byte);
+extern size_t ring_buffer_push_string(const uint8_t* source, size_t length);
+extern void send(uint32_t length);
+extern size_t receive(void);
 
 #define HANDSHAKE_ADDR      ((volatile uint32_t*)0x20080000)
 // RP2350 updated origins based on the new memory partition
@@ -182,9 +184,15 @@ int main() {
     gpio_pull_up(2);
     gpio_set_dir(2, GPIO_IN);
 
-    bool latch = false;
+    uint8_t data[256];
+    uint8_t counter = 0;
     // 4. Trace the handshake transitions
     uint32_t last_state = 0xFFFFFFFF;
+
+    for(size_t i = 0; i < 256; i++) {
+        data[i] = (uint8_t)i;
+    }
+
     while (1) {
         uint32_t current_state = *HANDSHAKE_ADDR;
 
@@ -230,14 +238,18 @@ int main() {
             }
         }
 
-        ring_buffer_push(0x42);
-        if ((gpio_get(2) == 0)) {
-            // Fire Doorbell 0 to alert Core 1.
-            // Writing a 1 to bit 0 sets the doorbell flag for the opposite core.
-            // latch = true;
-            // ring_buffer_push(0x42);
-            sio_hw->doorbell_out_set = (1UL << 0); 
+        if ( receive() > 0) {
+            ring_buffer_push_string(data, sizeof(data)/sizeof(uint8_t));
+            send(sizeof(data)/sizeof(uint8_t));
         }
+
+        // if ((gpio_get(2) == 0)) {
+        //     // Fire Doorbell 0 to alert Core 1.
+        //     // Writing a 1 to bit 0 sets the doorbell flag for the opposite core.
+        //     // latch = true;
+        //     // ring_buffer_push(0x42);
+        //     sio_hw->doorbell_out_set = (1UL << 0); 
+        // }
 
         sleep_ms(50);
     }

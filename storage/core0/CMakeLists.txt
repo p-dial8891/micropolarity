@@ -29,7 +29,7 @@ pico_sdk_init()
 add_subdirectory(../no-OS-FatFS-SD-SDIO-SPI-RPi-Pico/src build)
 
 # Add executable. Default name is the project name, version 0.1
-add_executable(core0 main.c ring_buffer.c)
+add_executable(core0 main.c ring_buffer.cpp messaging.cpp)
 
 # Can leave these off for silent mode:
 # add_compile_definitions(USE_PRINTF USE_DBG_PRINTF)
@@ -45,6 +45,7 @@ target_compile_definitions(core0 PRIVATE
 target_link_libraries(core0 
     pico_stdlib
     pico_multicore
+    hardware_sync
     no-OS-FatFS-SD-SDIO-SPI-RPi-Pico
 )
 

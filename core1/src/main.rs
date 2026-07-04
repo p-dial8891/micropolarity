@@ -18,6 +18,7 @@ use core::cell::RefCell;
 use core::task::{Poll};
 
 mod ring_buffer;
+mod messaging;
 
 // Use the absolute scratchpad memory window configured in memory.x
 const HANDSHAKE_ADDR: *mut u32 = 0x2008_0000 as *mut u32;
@@ -69,25 +70,51 @@ async fn logger_task(usb: embassy_rp::Peri<'static, embassy_rp::peripherals::USB
     embassy_usb_logger::run!(1024, log::LevelFilter::Info, driver);
 }
 
+// #[embassy_executor::task]
+// async fn core1_consumer_task() {
+//     log::info!("Starting consumer task.");
+//     let rb = ring_buffer::AsyncBurstReader::new();
+//     loop {
+//         let mut f = None;
+//         critical_section::with(|cs| {
+//             f = *CORE1_TERMINATE.borrow(cs).borrow_mut();      
+//         });
+//         if f == Some(()) {
+//             log::info!("Doorbell rang. Terminating receive.");
+//             return;
+//         }
+//         else {
+//             if let Some(byte) = rb.try_pop() {
+//                 log::info!("Byte received: {}", byte);
+//             }
+//             Timer::after(Duration::from_millis(50)).await;
+//         }
+//     }
+// }
+
+
 #[embassy_executor::task]
-async fn core1_consumer_task() {
+async fn core1_consumer_task(
+    p_2 : embassy_rp::Peri<'static, embassy_rp::peripherals::PIN_2>
+) {
     log::info!("Starting consumer task.");
-    let rb = ring_buffer::AsyncRingBufferReader::new();
+    let mut data = [0u8; 256];
+    let rb = ring_buffer::AsyncBurstReader::new();
+    let g = embassy_rp::gpio::Input::new(p_2, embassy_rp::gpio::Pull::Up);
     loop {
-        let mut f = None;
-        critical_section::with(|cs| {
-            f = *CORE1_TERMINATE.borrow(cs).borrow_mut();      
-        });
-        if f == Some(()) {
-            log::info!("Doorbell rang. Terminating receive.");
-            return;
+        if g.is_low() {
+            messaging::SharedMessage::send(1);
         }
-        else {
-            if let Some(byte) = rb.try_pop() {
-                log::info!("Byte received: {}", byte);
+        let recv_len = messaging::SharedMessage::receive();
+        if recv_len > 0 {
+            rb.pop_burst(&mut data[0..recv_len]);
+            for i in 1u8..=255u8 {
+                if data[i as usize] != i {
+                    log::warn!("Error in transmission.");
+                }
             }
-            Timer::after(Duration::from_millis(500)).await;
         }
+        Timer::after(Duration::from_millis(50)).await;
     }
 }
 
@@ -281,7 +308,8 @@ fn main() -> ! {
             p.PIO1, 
             p.DMA_CH0)
         .unwrap());
-        spawner.spawn(core1_consumer_task().unwrap());
+        //spawner.spawn(core1_consumer_task().unwrap());
+        spawner.spawn(core1_consumer_task(p.PIN_2).unwrap());
     });
 
 }
