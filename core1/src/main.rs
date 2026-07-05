@@ -107,12 +107,14 @@ async fn core1_consumer_task(
         }
         let recv_len = messaging::SharedMessage::receive();
         if recv_len > 0 {
-            rb.pop_burst(&mut data[0..recv_len]);
-            for i in 1u8..=255u8 {
+            let bytes_popped = rb.pop_burst(&mut data[0..recv_len]);
+            for i in 0u8..(recv_len as u8) {
                 if data[i as usize] != i {
-                    log::warn!("Error in transmission.");
+                    log::warn!("Error in transmission: {} vs {}", data[i as usize], i);
                 }
+                data[i as usize] = 0;
             }
+            log::info!("Received {} bytes and popped {} bytes.", recv_len, bytes_popped);
         }
         Timer::after(Duration::from_millis(50)).await;
     }

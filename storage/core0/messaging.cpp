@@ -35,5 +35,7 @@ extern "C" {
             message->update = 0;
         }
         spin_unlock(s, irq);
+
+        return (size_t)length;
     }
 }

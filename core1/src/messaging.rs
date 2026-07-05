@@ -18,21 +18,23 @@ impl SharedMessage {
         let mut message = unsafe { &mut *(G_TO_D_ADDR as *mut SharedMessage) };
         cortex_m::asm::dmb();
         let s = SpinlockMutex::<1, &mut SharedMessage>::new(message);
-        let mut sync_m = unsafe { s.lock_mut(|_| {}) };
-        message.length = length;
-        message.update = 1u32;
+        unsafe { s.lock_mut(|ref mut m| {
+            m.length = length;
+            m.update = 1u32;
+        }) };
+
     }
 
     pub fn receive() -> usize {
         let mut message = unsafe { &mut *(D_TO_G_ADDR as *mut SharedMessage) };
         let s = SpinlockMutex::<0, &mut SharedMessage>::new(message);
-        let mut sync_m = unsafe { s.lock_mut(|_| {}) };
-        if message.update == 1 {
-            message.update = 0;
-            message.length as usize
-        } else {
-            0usize
-        }
+        unsafe { s.lock_mut(|ref mut m| {
+            if m.update == 1 {
+                m.update = 0;
+                m.length as usize
+            } else {
+                0usize
+            }
+        }) }
     }
-
 }

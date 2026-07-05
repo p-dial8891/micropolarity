@@ -6,7 +6,7 @@ use critical_section::Mutex;
 
 const BUFFER_SIZE: usize = 256;
 const BUFFER_MASK: u32 = (BUFFER_SIZE - 1) as u32;
-const SHARED_BUFFER_ADDR: usize = 0x2007F000;
+const SHARED_BUFFER_ADDR: usize = 0x20080800;
 
 // Global thread-safe flag
 pub static CORE1_TERMINATE: Mutex<RefCell<Option<()>>> = Mutex::new(RefCell::new(None));

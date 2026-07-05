@@ -32,6 +32,7 @@ https://github.com/carlk3/no-OS-FatFS-SD-SDIO-SPI-RPi-Pico/tree/main#customizing
 
 #include "hw_config.h"
 
+extern void ring_buffer_init(void);
 extern size_t ring_buffer_push_string(const uint8_t* source, size_t length);
 extern void send(uint32_t length);
 extern size_t receive(void);
@@ -185,7 +186,7 @@ int main() {
     gpio_set_dir(2, GPIO_IN);
 
     uint8_t data[256];
-    uint8_t counter = 0;
+    int8_t counter = 20;
     // 4. Trace the handshake transitions
     uint32_t last_state = 0xFFFFFFFF;
 
@@ -237,10 +238,11 @@ int main() {
                     break;
             }
         }
-
-        if ( receive() > 0) {
-            ring_buffer_push_string(data, sizeof(data)/sizeof(uint8_t));
-            send(sizeof(data)/sizeof(uint8_t));
+        // printf("Messaging started.");
+        if ( receive() == 1 ) {
+            printf("Request received.\n");
+            printf("Bytes pushed %d\n", ring_buffer_push_string(data, sizeof(data)/sizeof(uint8_t)));
+            send((sizeof(data)/sizeof(uint8_t))-1);
         }
 
         // if ((gpio_get(2) == 0)) {
@@ -252,6 +254,11 @@ int main() {
         // }
 
         sleep_ms(50);
+
+        // if ( counter-- <= 0 ) {
+        //     counter = 20;
+        //     printf("Core 0 is alive.");
+        // }
     }
 }
 

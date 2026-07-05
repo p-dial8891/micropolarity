@@ -50,10 +50,10 @@ bool ring_buffer_push(uint8_t byte) {
 #include "hardware/structs/sio.h"
 #endif
 
-#define BUFFER_SIZE 2048 // Increased size (Must be power of two)
+#define BUFFER_SIZE 256 // Increased size (Must be power of two)
 #define BUFFER_MASK (BUFFER_SIZE - 1)
 //#define WATERMARK_THRESHOLD 64 // Trigger doorbell every 64 bytes
-#define SHARED_BUFFER_ADDR 0x20080000
+#define SHARED_BUFFER_ADDR 0x20080800
 
 typedef struct {
     alignas(4) volatile uint32_t head; // 4-byte hardware bus alignment
