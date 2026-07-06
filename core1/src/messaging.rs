@@ -25,15 +25,15 @@ impl SharedMessage {
 
     }
 
-    pub fn receive() -> usize {
+    pub fn receive() -> (bool, usize) {
         let mut message = unsafe { &mut *(D_TO_G_ADDR as *mut SharedMessage) };
         let s = SpinlockMutex::<0, &mut SharedMessage>::new(message);
         unsafe { s.lock_mut(|ref mut m| {
             if m.update == 1 {
                 m.update = 0;
-                m.length as usize
+                (true, m.length as usize)
             } else {
-                0usize
+                (false, 0usize)
             }
         }) }
     }

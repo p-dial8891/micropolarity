@@ -4,12 +4,9 @@ use core::task::{Context, Poll, Waker};
 use core::cell::RefCell;
 use critical_section::Mutex;
 
-const BUFFER_SIZE: usize = 256;
+pub const BUFFER_SIZE: usize = 256;
 const BUFFER_MASK: u32 = (BUFFER_SIZE - 1) as u32;
 const SHARED_BUFFER_ADDR: usize = 0x20080800;
-
-// Global thread-safe flag
-pub static CORE1_TERMINATE: Mutex<RefCell<Option<()>>> = Mutex::new(RefCell::new(None));
 
 #[repr(C)]
 struct RawRingBuffer {
@@ -17,33 +14,6 @@ struct RawRingBuffer {
     tail: AtomicU32,
     data: [u8; BUFFER_SIZE],
 }
-
-// pub struct AsyncRingBufferReader;
-
-// impl AsyncRingBufferReader {
-//     pub fn new() -> Self {
-//         Self
-//     }
-
-//     // Raw atomic pop operation
-//     pub fn try_pop(&self) -> Option<u8> {
-//         unsafe {
-//             let rb = &*(SHARED_BUFFER_ADDR as *const RawRingBuffer);
-//             let current_head = rb.head.load(Ordering::Acquire);
-//             let current_tail = rb.tail.load(Ordering::Relaxed);
-
-//             if current_head == current_tail {
-//                 return None; // Buffer is empty
-//             }
-
-//             let byte = rb.data[current_tail as usize];
-            
-//             // Increment tail safely
-//             rb.tail.store((current_tail + 1) & BUFFER_MASK, Ordering::Release);
-//             Some(byte)
-//         }
-//     }
-// }
 
 pub struct AsyncBurstReader;
 
@@ -78,6 +48,13 @@ impl AsyncBurstReader {
             // Release ordering flushes the new tail pointer back to Core 0 safely
             rb.tail.store(tail, Ordering::Release);
             bytes_copied
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        unsafe {
+            let rb = &*(SHARED_BUFFER_ADDR as *const RawRingBuffer);
+            return rb.head.load(Ordering::Relaxed) == rb.tail.load(Ordering::Relaxed);
         }
     }
 }
