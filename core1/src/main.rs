@@ -216,7 +216,6 @@ fn main() -> ! {
 
         spawner.spawn(player::player_task(
            p.PIO0, p.DMA_CH11, p.PIN_27, p.PIN_28, p.PIN_3
-        //    p.PIO0, p.DMA_CH11, p.PIN_23, p.PIN_25, p.PIN_24
         ).unwrap());
         //spawner.spawn(core1_consumer_task(p.PIN_2).unwrap());
     });

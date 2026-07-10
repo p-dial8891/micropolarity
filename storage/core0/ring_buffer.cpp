@@ -3,16 +3,17 @@
 #include "pico/stdlib.h"
 #include "pico/multicore.h"
 //#include "mem_layout.h"
+#include "ring_buffer.h"
 
 #if 0
-#define BUFFER_SIZE 256 // Must be a power of two
-#define BUFFER_MASK (BUFFER_SIZE - 1)
+#define RING_BUFFER_SIZE 256 // Must be a power of two
+#define BUFFER_MASK (RING_BUFFER_SIZE - 1)
 
 // Packed structure shared between C++ and Rust
 typedef struct {
     volatile uint32_t head;            // Written by Producer
     volatile uint32_t tail;            // Written by Consumer
-    uint8_t data[BUFFER_SIZE];         // Array block
+    uint8_t data[RING_BUFFER_SIZE];         // Array block
 } SharedRingBuffer;
 
 // Point directly to an unallocated high SRAM zone
@@ -50,15 +51,14 @@ bool ring_buffer_push(uint8_t byte) {
 #include "hardware/structs/sio.h"
 #endif
 
-#define BUFFER_SIZE 256 // Increased size (Must be power of two)
-#define BUFFER_MASK (BUFFER_SIZE - 1)
+#define BUFFER_MASK (RING_BUFFER_SIZE - 1)
 //#define WATERMARK_THRESHOLD 64 // Trigger doorbell every 64 bytes
 #define SHARED_BUFFER_ADDR 0x20080800
 
 typedef struct {
     alignas(4) volatile uint32_t head; // 4-byte hardware bus alignment
     alignas(4) volatile uint32_t tail;
-    uint8_t data[BUFFER_SIZE];
+    uint8_t data[RING_BUFFER_SIZE];
 } SharedRingBuffer;
 
 inline SharedRingBuffer* get_shared_buffer() {
@@ -98,7 +98,7 @@ extern "C" {
             // Calculate currently queued bytes
             uint32_t queued = (current_head >= current_tail) ? 
                             (current_head - current_tail) : 
-                            (BUFFER_SIZE - (current_tail - current_head));
+                            (RING_BUFFER_SIZE - (current_tail - current_head));
 
             // Only interrupt Core 1 if we crossed the threshold
             if (queued >= WATERMARK_THRESHOLD) {

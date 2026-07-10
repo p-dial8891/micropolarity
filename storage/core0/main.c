@@ -21,6 +21,7 @@ specific language governing permissions and limitations under the License.
 #include "ff.h"
 #include "hw_config.h"
 #include "pico/multicore.h"
+#include "ring_buffer.h"
 /*
 
 This file should be tailored to match the hardware design.
@@ -132,25 +133,19 @@ int main() {
     }
 
     FIL fil;
-    const char* const filename = "Remind_Me.mp3";
-    fr = f_open(&fil, filename, FA_OPEN_APPEND | FA_WRITE);
+    const char* const filename = "filename.txt";
+    fr = f_open(&fil, filename, FA_WRITE | FA_OPEN_APPEND);
     if (FR_OK != fr && FR_EXIST != fr) {
         panic("f_open(%s) error: %s (%d)\n", filename, FRESULT_str(fr), fr);
         return -1;
     }
 
-    fr = f_close(&fil);
-    if (FR_OK != fr) {
-        printf("f_close error: %s (%d)\n", FRESULT_str(fr), fr);
-    }
 
-    f_unmount("");
-
-#if 0
     if (f_printf(&fil, "Hello, world!\n") < 0) {
         printf("f_printf failed\n");
     }
 
+#if 0
     puts("Goodbye, world!");
     for (;;) {
         puts("Goodbye, world!");
@@ -186,14 +181,10 @@ int main() {
     gpio_pull_up(2);
     gpio_set_dir(2, GPIO_IN);
 
-    uint8_t data[256];
+    static uint8_t data[RING_BUFFER_SIZE];
     uint16_t br = 20;
     size_t total = 0;
     uint32_t last_state = 0xFFFFFFFF;
-
-    for(size_t i = 0; i < 256; i++) {
-        data[i] = (uint8_t)i;
-    }
 
     while (1) {
         uint32_t current_state = *HANDSHAKE_ADDR;
@@ -240,24 +231,32 @@ int main() {
             }
         }
         // printf("Messaging started.");
-        // if ( !((total > 0) && (br == 0)) ) {
-        //     if ( receive() == 1 ) {
-        //         printf("Request received.\n");
-        //         f_read(&fil,data,255,(unsigned int*)&br);
-        //         total += br;
-        //         if ( br != 0 ) {
-        //             ring_buffer_push_string(data, br);
-        //             send(br);
-        //         }
-        //         else {
-        //             printf("Total bytes written : %d", total);
-        //         }
-        //     }
-        // }
+        if ( !((total > 0) && (br == 0)) ) {
+            if ( receive() == 1 ) {
+                //printf("Request received.\n");
+                f_read(&fil,data,RING_BUFFER_SIZE-1,(unsigned int*)&br);
+                total += br;
+                if ( br != 0 ) {
+                    ring_buffer_push_string(data, br);
+                    send(br);
+                }
+                else {
+                    printf("Total bytes written : %d", total);
+                    break;
+                }
+            }
+        }
 
         sleep_ms(10);
 
     }
+
+    fr = f_close(&fil);
+    if (FR_OK != fr) {
+        printf("f_close error: %s (%d)\n", FRESULT_str(fr), fr);
+    }
+
+    f_unmount("");
 
 }
 
