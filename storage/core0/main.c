@@ -125,27 +125,36 @@ int main() {
 
     // See FatFs - Generic FAT Filesystem Module, "Application Interface",
     // http://elm-chan.org/fsw/ff/00index_e.html
-    FATFS fs;
+    static FATFS fs;
     FRESULT fr = f_mount(&fs, "", 1);
     if (FR_OK != fr) {
         panic("f_mount error: %s (%d)\n", FRESULT_str(fr), fr);
         return -1;
     }
 
-    FIL fil;
+    static FIL fil;
+#if 0
     const char* const filename = "filename.txt";
     fr = f_open(&fil, filename, FA_WRITE | FA_OPEN_APPEND);
     if (FR_OK != fr && FR_EXIST != fr) {
         panic("f_open(%s) error: %s (%d)\n", filename, FRESULT_str(fr), fr);
         return -1;
     }
+#endif
+    const char* const filename = "Ordinary.mp3";
+    fr = f_open(&fil, filename, FA_READ );
+    if (FR_OK != fr && FR_EXIST != fr) {
+        panic("f_open(%s) error: %s (%d)\n", filename, FRESULT_str(fr), fr);
+        return -1;
+    }
+    printf("File open return code : %d", fr);
 
+#if 0
 
     if (f_printf(&fil, "Hello, world!\n") < 0) {
         printf("f_printf failed\n");
     }
 
-#if 0
     puts("Goodbye, world!");
     for (;;) {
         puts("Goodbye, world!");
@@ -234,7 +243,10 @@ int main() {
         if ( !((total > 0) && (br == 0)) ) {
             if ( receive() == 1 ) {
                 //printf("Request received.\n");
-                f_read(&fil,data,RING_BUFFER_SIZE-1,(unsigned int*)&br);
+                fr = f_read(&fil,data,RING_BUFFER_SIZE-1,(unsigned int*)&br);
+                if (FR_OK != fr) {
+                    printf("f_read error: %s (%d)\n", FRESULT_str(fr), fr);
+                }
                 total += br;
                 if ( br != 0 ) {
                     ring_buffer_push_string(data, br);

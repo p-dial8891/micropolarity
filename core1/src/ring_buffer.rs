@@ -4,7 +4,7 @@ use core::task::{Context, Poll, Waker};
 use core::cell::RefCell;
 use critical_section::Mutex;
 
-pub const BUFFER_SIZE: usize = 256;
+pub const BUFFER_SIZE: usize = 2*1024;
 const BUFFER_MASK: u32 = (BUFFER_SIZE - 1) as u32;
 const SHARED_BUFFER_ADDR: usize = 0x20080800;
 
