@@ -5,7 +5,7 @@ use embassy_time::{Duration, Timer};
 // For USB
 use embassy_rp::{peripherals::USB, usb};
 use embassy_rp::{bind_interrupts, dma};
-use embassy_rp::peripherals::{DMA_CH0, PIO1};
+use embassy_rp::peripherals::{DMA_CH10, DMA_CH11, PIO0};
 use embassy_rp::pio::{InterruptHandler, Pio};
 use embassy_rp::gpio::{Level, Output};
 use embassy_rp::interrupt::{self, InterruptExt};
@@ -19,9 +19,11 @@ mod messaging;
 mod player;
 
 // Use the absolute scratchpad memory window configured in memory.x
-const HANDSHAKE_ADDR: *mut u32 = 0x2008_0000 as *mut u32;
+pub const HANDSHAKE_ADDR: *mut u32 = 0x2008_0000 as *mut u32;
 
 bind_interrupts!(struct Irqs {
+    DMA_IRQ_0 => dma::InterruptHandler<DMA_CH11>;
+    PIO0_IRQ_0 => InterruptHandler<PIO0>;
     USBCTRL_IRQ => usb::InterruptHandler<USB>;
 });
 
@@ -157,27 +159,27 @@ static EXECUTOR: StaticCell<Executor> = StaticCell::new();
 
 #[cortex_m_rt::entry]
 fn main() -> ! {
-    unsafe {
-        const SIO_BASE: u32 = 0xd0000000;
-        const SPINLOCK0_PTR: *mut u32 = (SIO_BASE + 0x100) as *mut u32;
-        const SPINLOCK_COUNT: usize = 32;
-        for i in 0..SPINLOCK_COUNT {
-            SPINLOCK0_PTR.wrapping_add(i).write_volatile(1);
-        }
-        // Enable the Double-Co-Pro and the GPIO Co-Pro in the CPACR register.
-        // We have to do this early, before there's a chance we might call
-        // any accelerated functions.
-        const SCB_CPACR_PTR: *mut u32 = 0xE000_ED88 as *mut u32;
-        const SCB_CPACR_FULL_ACCESS: u32 = 0b11;
-        // Do a R-M-W, because the FPU enable is here and that's already been enabled
-        let mut temp = SCB_CPACR_PTR.read_volatile();
-        // DCP Co-Pro is 4, two-bits per entry
-        temp |= SCB_CPACR_FULL_ACCESS << (4 * 2);
-        // GPIO Co-Pro is 0, two-bits per entry
-        temp |= SCB_CPACR_FULL_ACCESS << (0 * 2);
-        SCB_CPACR_PTR.write_volatile(temp);
+    // unsafe {
+    //     const SIO_BASE: u32 = 0xd0000000;
+    //     const SPINLOCK0_PTR: *mut u32 = (SIO_BASE + 0x100) as *mut u32;
+    //     const SPINLOCK_COUNT: usize = 32;
+    //     for i in 0..SPINLOCK_COUNT {
+    //         SPINLOCK0_PTR.wrapping_add(i).write_volatile(1);
+    //     }
+    //     // Enable the Double-Co-Pro and the GPIO Co-Pro in the CPACR register.
+    //     // We have to do this early, before there's a chance we might call
+    //     // any accelerated functions.
+    //     const SCB_CPACR_PTR: *mut u32 = 0xE000_ED88 as *mut u32;
+    //     const SCB_CPACR_FULL_ACCESS: u32 = 0b11;
+    //     // Do a R-M-W, because the FPU enable is here and that's already been enabled
+    //     let mut temp = SCB_CPACR_PTR.read_volatile();
+    //     // DCP Co-Pro is 4, two-bits per entry
+    //     temp |= SCB_CPACR_FULL_ACCESS << (4 * 2);
+    //     // GPIO Co-Pro is 0, two-bits per entry
+    //     temp |= SCB_CPACR_FULL_ACCESS << (0 * 2);
+    //     SCB_CPACR_PTR.write_volatile(temp);
 
-    }
+    // }
     // 1. SIGNAL STAGE 1: Core 1 has successfully jumped into Rust code space!
     unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0x1111_1111); }
 
@@ -200,7 +202,7 @@ fn main() -> ! {
     let executor = EXECUTOR.init(Executor::new());
     executor.run(|spawner| {
         spawner.spawn(logger_task(p.USB).unwrap());
-        spawner.spawn(core1_async_loop().unwrap());
+        //spawner.spawn(core1_async_loop().unwrap());
         // spawner.spawn(core1_wifi_loop(
         //     spawner,
         //     p.PIN_23, 
@@ -211,8 +213,10 @@ fn main() -> ! {
         //     p.DMA_CH0)
         // .unwrap());
         //spawner.spawn(core1_consumer_task().unwrap());
+
         spawner.spawn(player::player_task(
-            p.PIO1, p.DMA_CH1, p.PIN_27, p.PIN_28, p.PIN_3
+           p.PIO0, p.DMA_CH11, p.PIN_27, p.PIN_28, p.PIN_3
+        //    p.PIO0, p.DMA_CH11, p.PIN_23, p.PIN_25, p.PIN_24
         ).unwrap());
         //spawner.spawn(core1_consumer_task(p.PIN_2).unwrap());
     });

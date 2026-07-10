@@ -24,18 +24,20 @@ extern "C" {
         spin_unlock(s, irq);
     }
 
-    size_t receive(void) {
-        uint32_t length = 0;
+    bool receive(void) {
+        //uint32_t length = 0;
+        bool result = false;
         auto s = spin_lock_init(1);
         SharedMessage * message = reinterpret_cast<SharedMessage*>(G_TO_D_ADDR);
 
         auto irq = spin_lock_blocking(s);
         if (message->update == 1) {
-            length = message->length;
+            //length = message->length;
             message->update = 0;
+            result = true;
         }
         spin_unlock(s, irq);
 
-        return (size_t)length;
+        return result;
     }
 }

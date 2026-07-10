@@ -132,15 +132,11 @@ int main() {
     }
 
     FIL fil;
-    const char* const filename = "filename.txt";
+    const char* const filename = "Remind_Me.mp3";
     fr = f_open(&fil, filename, FA_OPEN_APPEND | FA_WRITE);
     if (FR_OK != fr && FR_EXIST != fr) {
         panic("f_open(%s) error: %s (%d)\n", filename, FRESULT_str(fr), fr);
         return -1;
-    }
-
-    if (f_printf(&fil, "Hello, world!\n") < 0) {
-        printf("f_printf failed\n");
     }
 
     fr = f_close(&fil);
@@ -149,7 +145,12 @@ int main() {
     }
 
     f_unmount("");
+
 #if 0
+    if (f_printf(&fil, "Hello, world!\n") < 0) {
+        printf("f_printf failed\n");
+    }
+
     puts("Goodbye, world!");
     for (;;) {
         puts("Goodbye, world!");
@@ -186,8 +187,8 @@ int main() {
     gpio_set_dir(2, GPIO_IN);
 
     uint8_t data[256];
-    int8_t counter = 20;
-    // 4. Trace the handshake transitions
+    uint16_t br = 20;
+    size_t total = 0;
     uint32_t last_state = 0xFFFFFFFF;
 
     for(size_t i = 0; i < 256; i++) {
@@ -220,10 +221,10 @@ int main() {
                 //     printf("[Core 1 Sync]: SUCCESS! Core 1 is running in non-secure mode.\n");
                 //     break;
                 case 0x4EC07111:
-                    printf("[Core 1 Sync]: SUCCESS! Core 1 toggle on.\n");
+                    printf("[Core 1 Sync]: SUCCESS! Core 1 clock init started.\n");
                     break;
                 case 0x5EC07111:
-                    printf("[Core 1 Sync]: SUCCESS! Core 1 toggle off.\n");
+                    printf("[Core 1 Sync]: SUCCESS! Core 1 clock init finished.\n");
                     break;
                 case 0x6EC07111:
                     printf("[Core 1 Sync]: SUCCESS! Core 1 detected key press.\n");
@@ -239,27 +240,25 @@ int main() {
             }
         }
         // printf("Messaging started.");
-        if ( receive() == 1 ) {
-            printf("Request received.\n");
-            printf("Bytes pushed %d\n", ring_buffer_push_string(data, sizeof(data)/sizeof(uint8_t)));
-            send((sizeof(data)/sizeof(uint8_t))-1);
-        }
-
-        // if ((gpio_get(2) == 0)) {
-        //     // Fire Doorbell 0 to alert Core 1.
-        //     // Writing a 1 to bit 0 sets the doorbell flag for the opposite core.
-        //     // latch = true;
-        //     // ring_buffer_push(0x42);
-        //     sio_hw->doorbell_out_set = (1UL << 0); 
+        // if ( !((total > 0) && (br == 0)) ) {
+        //     if ( receive() == 1 ) {
+        //         printf("Request received.\n");
+        //         f_read(&fil,data,255,(unsigned int*)&br);
+        //         total += br;
+        //         if ( br != 0 ) {
+        //             ring_buffer_push_string(data, br);
+        //             send(br);
+        //         }
+        //         else {
+        //             printf("Total bytes written : %d", total);
+        //         }
+        //     }
         // }
 
-        sleep_ms(50);
+        sleep_ms(10);
 
-        // if ( counter-- <= 0 ) {
-        //     counter = 20;
-        //     printf("Core 0 is alive.");
-        // }
     }
+
 }
 
 
