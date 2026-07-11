@@ -29,23 +29,17 @@ struct FileReader {
 impl Read for FileReader {
     async fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
         let mut bytes_popped = 0;
-        loop {
-            //log::info!("Sending request.");
-            SharedMessage::send(1);
-            while let (false, _) = SharedMessage::receive() {}
-            unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0x5EC07111); }
-            if !self.rb.is_empty() {
-                if bytes_popped < buf.len() {
-                    bytes_popped += self.rb.pop_burst(&mut buf[bytes_popped..]);
-                } else {
-                    break;
-                }
-            } else {
-                break;
-            }
-            Timer::after(Duration::from_millis(5)).await;
+        //log::info!("Sending request.");
+        SharedMessage::send(1);
+        while let (false, _) = SharedMessage::receive() {
+            Timer::after_millis(5).await;
+        }
+        unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0x5EC07111); }
+        if !self.rb.is_empty() {
+            bytes_popped = self.rb.pop_burst(buf);
         }
         log::info!("{} bytes popped from core 0", bytes_popped);
+        Timer::after_millis(10).await;
         Ok(bytes_popped)
     }
 }
@@ -222,8 +216,8 @@ pub async fn player_task(
             }
             used /= 2;
             profile_end = Instant::now().as_millis();        
-            // log::info!("Playing {} bytes @ {:.3}Kbps with {} bytes queued", used,
-            //     (used as f32)/((profile_end - profile_start) as f32), socket.recv_queue(),);
+            log::info!("Playing {} bytes @ {:.3}Kbps ", used, 
+                (used as f32)/((profile_end - profile_start) as f32));
             if let Some(f) = frame_info {
                 log::info!("{:?} with {decoded} bytes decoded and {} bytes buffered",f, read);
             } else {

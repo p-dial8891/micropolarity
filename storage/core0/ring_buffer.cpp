@@ -90,9 +90,9 @@ extern "C" {
         }
 
         if (bytes_written > 0) {
-            // Data Memory Barrier: Flushes the CPU write-buffer out to actual SRAM
-            // before updating the head pointer.
-            __dmb(); 
+            // // Data Memory Barrier: Flushes the CPU write-buffer out to actual SRAM
+            // // before updating the head pointer.
+            // __dmb(); 
             rb->head = current_head;
     #if 0
             // Calculate currently queued bytes

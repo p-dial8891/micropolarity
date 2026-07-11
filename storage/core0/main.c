@@ -14,6 +14,7 @@ specific language governing permissions and limitations under the License.
 
 #include <stdio.h>
 #include <stdint.h>
+#include <string.h>
 //
 #include "pico/stdlib.h"
 //
@@ -121,7 +122,7 @@ int main() {
     stdio_init_all();
     sleep_ms(2000); // Wait for serial monitor to connect
 #if 1
-    puts("Hello, world!");
+    // puts("Hello, world!");
 
     // See FatFs - Generic FAT Filesystem Module, "Application Interface",
     // http://elm-chan.org/fsw/ff/00index_e.html
@@ -191,9 +192,15 @@ int main() {
     gpio_set_dir(2, GPIO_IN);
 
     static uint8_t data[RING_BUFFER_SIZE];
-    uint16_t br = 20;
-    size_t total = 0;
+    size_t total_read = 0;
+    size_t total_written = 0;
+    size_t len = 0;
+    size_t read = 0;
+    size_t written = 0;
     uint32_t last_state = 0xFFFFFFFF;
+
+    extern uint32_t SystemCoreClock;
+    printf("System core clock is %d\n", SystemCoreClock);
 
     while (1) {
         uint32_t current_state = *HANDSHAKE_ADDR;
@@ -240,20 +247,26 @@ int main() {
             }
         }
         // printf("Messaging started.");
-        if ( !((total > 0) && (br == 0)) ) {
+        if ( !((total_read > 0) && (read == 0)) ) {
             if ( receive() == 1 ) {
                 //printf("Request received.\n");
-                fr = f_read(&fil,data,RING_BUFFER_SIZE-1,(unsigned int*)&br);
+                fr = f_read(&fil,&data[len],RING_BUFFER_SIZE-(UINT)len,(UINT*)&read);
                 if (FR_OK != fr) {
                     printf("f_read error: %s (%d)\n", FRESULT_str(fr), fr);
                 }
-                total += br;
-                if ( br != 0 ) {
-                    ring_buffer_push_string(data, br);
-                    send(br);
+                len += read;
+                total_read += read;
+                if ( read != 0 ) {
+                    size_t written = ring_buffer_push_string(&data[0], len);
+                    memmove((void*)&data[0], (const void*)&data[written], len - written);
+                    len -= written;
+                    total_written += written;
+                    send((uint32_t)written);
                 }
                 else {
-                    printf("Total bytes written : %d", total);
+                    printf("Total bytes read : %d\n", total_read);
+                    printf("Total bytes written : %d\n", total_written);
+                    send((uint32_t)0);
                     break;
                 }
             }
