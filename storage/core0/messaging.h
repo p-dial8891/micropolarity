@@ -1,0 +1,2 @@
+//#define SPINLOCK
+#define FIFO

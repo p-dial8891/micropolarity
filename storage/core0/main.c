@@ -142,7 +142,7 @@ int main() {
         return -1;
     }
 #endif
-    const char* const filename = "Ordinary.mp3";
+    const char* const filename = "Remind_Me.mp3";
     fr = f_open(&fil, filename, FA_READ );
     if (FR_OK != fr && FR_EXIST != fr) {
         panic("f_open(%s) error: %s (%d)\n", filename, FRESULT_str(fr), fr);
@@ -185,6 +185,7 @@ int main() {
     // sleep_ms(10);
     multicore_launch_core1_raw((void (*)())rust_entry_address, (uint32_t*)rust_stack_pointer, RUST_FLASH_ORIGIN);
     //direct_boot_core1(rust_entry_address, rust_stack_pointer, RUST_FLASH_ORIGIN);
+    sleep_ms(1000);
 
     ring_buffer_init();
     gpio_init(2);
@@ -248,9 +249,9 @@ int main() {
         }
         // printf("Messaging started.");
         if ( !((total_read > 0) && (read == 0)) ) {
-            if ( receive() == 1 ) {
+            if ( receive() == true ) {
                 //printf("Request received.\n");
-                fr = f_read(&fil,&data[len],RING_BUFFER_SIZE-(UINT)len,(UINT*)&read);
+                fr = f_read(&fil,&data[len],((RING_BUFFER_SIZE-1)-(UINT)len),(UINT*)&read);
                 if (FR_OK != fr) {
                     printf("f_read error: %s (%d)\n", FRESULT_str(fr), fr);
                 }
@@ -266,6 +267,7 @@ int main() {
                 else {
                     printf("Total bytes read : %d\n", total_read);
                     printf("Total bytes written : %d\n", total_written);
+                    printf("Length in buffer : %d\n", len);
                     send((uint32_t)0);
                     break;
                 }

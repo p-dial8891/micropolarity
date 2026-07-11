@@ -1,5 +1,10 @@
-use core::sync::atomic::{AtomicU32, Ordering};
+//use core::sync::atomic::{AtomicU32, Ordering};
+#[cfg(feature = "spinlock")]
 use embassy_rp::spinlock_mutex::blocking_mutex::*;
+
+#[cfg(feature = "fifo")]
+use rp_pac::SIO;
+
 use core::mem;
 
 const D_TO_G_ADDR : usize = (0x20081000);
@@ -14,6 +19,7 @@ pub struct SharedMessage {
 
 impl SharedMessage {
 
+    #[cfg(feature = "spinlock")]
     pub fn send(length : u32) {
         let mut message = unsafe { &mut *(G_TO_D_ADDR as *mut SharedMessage) };
         cortex_m::asm::dmb();
@@ -25,6 +31,7 @@ impl SharedMessage {
 
     }
 
+    #[cfg(feature = "spinlock")]
     pub fn receive() -> (bool, usize) {
         let mut message = unsafe { &mut *(D_TO_G_ADDR as *mut SharedMessage) };
         let s = SpinlockMutex::<0, &mut SharedMessage>::new(message);
@@ -36,5 +43,24 @@ impl SharedMessage {
                 (false, 0usize)
             }
         }) }
+    }
+
+    #[cfg(feature = "fifo")]
+    pub fn send(length : u32) {
+        let fifo = SIO.fifo();
+        cortex_m::asm::dmb();
+        if fifo.st().read().rdy() {
+            fifo.wr().write_value(length);
+        }
+    }
+
+    #[cfg(feature = "fifo")]
+    pub fn receive() -> (bool, usize) {
+        let fifo = SIO.fifo();
+        if fifo.st().read().vld() {
+            (true, fifo.rd().read() as usize)
+        } else {
+            (false, 0)
+        }
     }
 }

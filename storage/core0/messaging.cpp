@@ -3,6 +3,7 @@
 #include "pico/stdlib.h"
 #include "pico/multicore.h"
 #include "hardware/sync.h"
+#include "messaging.h"
 
 #define D_TO_G_ADDR     (0x20081000)
 #define G_TO_D_ADDR     (0x20081000 + sizeof(SharedMessage))
@@ -13,6 +14,7 @@ typedef struct {
 } SharedMessage;
 
 extern "C" {
+#ifdef SPINLOCK
     void send(uint32_t length) {
         auto s = spin_lock_init(0);
         SharedMessage * message = reinterpret_cast<SharedMessage*>(D_TO_G_ADDR);
@@ -40,4 +42,21 @@ extern "C" {
 
         return result;
     }
+#elif defined(FIFO)
+    void send(uint32_t length) {
+        __dmb();
+        if (multicore_fifo_wready()) {
+            multicore_fifo_push_blocking(length);
+        }
+    }
+
+    bool receive(void) {
+        if (multicore_fifo_rvalid()) {
+            (void)multicore_fifo_pop_blocking();
+            return true;
+        } else {
+            return false;
+        }
+    }
+#endif
 }

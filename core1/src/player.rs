@@ -39,7 +39,7 @@ impl Read for FileReader {
             bytes_popped = self.rb.pop_burst(buf);
         }
         log::info!("{} bytes popped from core 0", bytes_popped);
-        Timer::after_millis(10).await;
+        Timer::after_millis(5).await;
         Ok(bytes_popped)
     }
 }
