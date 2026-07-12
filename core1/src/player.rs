@@ -30,11 +30,10 @@ impl Read for FileReader {
     async fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
         let mut bytes_popped = 0;
         //log::info!("Sending request.");
-        SharedMessage::send(1);
-        while let (false, _) = SharedMessage::receive() {
+        SharedMessage::send_string([1u32;2]);
+        while let (false, _) = SharedMessage::receive_string() {
             Timer::after_millis(5).await;
         }
-        unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0x5EC07111); }
         if !self.rb.is_empty() {
             bytes_popped = self.rb.pop_burst(buf);
         }

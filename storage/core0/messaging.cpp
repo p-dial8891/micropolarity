@@ -4,6 +4,7 @@
 #include "pico/multicore.h"
 #include "hardware/sync.h"
 #include "messaging.h"
+#include <stdio.h>
 
 #define D_TO_G_ADDR     (0x20081000)
 #define G_TO_D_ADDR     (0x20081000 + sizeof(SharedMessage))
@@ -50,6 +51,22 @@ extern "C" {
         }
     }
 
+    void send_string(uint32_t* data) {
+        __dmb();
+        for ( int i = 0; i < 2; i++ ) {
+            if (multicore_fifo_wready()) {
+                multicore_fifo_push_blocking(data[i]);
+            } else {
+                if ( i == 1 ) {
+                    printf("FIFO blocked.");
+                    while (true) {};
+                } else {
+                    break;
+                }
+            }
+        }
+    }
+
     bool receive(void) {
         if (multicore_fifo_rvalid()) {
             (void)multicore_fifo_pop_blocking();
@@ -58,5 +75,25 @@ extern "C" {
             return false;
         }
     }
+
+    bool receive_string(void) {
+        bool ret = false;
+        for ( int i = 0; i < 2; i++ ) {
+            if (multicore_fifo_rvalid()) {
+                (void)multicore_fifo_pop_blocking();
+                ret = true;
+            } else {
+                if ( i == 1 ) {
+                    printf("FIFO blocked.");
+                    while (true) {};
+                } else {
+                    break;
+                }
+                ret = false;
+            }
+        }
+        return ret;
+    }
+
 #endif
 }

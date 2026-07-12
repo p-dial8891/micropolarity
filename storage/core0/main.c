@@ -23,6 +23,7 @@ specific language governing permissions and limitations under the License.
 #include "hw_config.h"
 #include "pico/multicore.h"
 #include "ring_buffer.h"
+#include "messaging.h"
 /*
 
 This file should be tailored to match the hardware design.
@@ -36,8 +37,6 @@ https://github.com/carlk3/no-OS-FatFS-SD-SDIO-SPI-RPi-Pico/tree/main#customizing
 
 extern void ring_buffer_init(void);
 extern size_t ring_buffer_push_string(const uint8_t* source, size_t length);
-extern void send(uint32_t length);
-extern size_t receive(void);
 
 #define HANDSHAKE_ADDR      ((volatile uint32_t*)0x20080000)
 // RP2350 updated origins based on the new memory partition
@@ -249,7 +248,7 @@ int main() {
         }
         // printf("Messaging started.");
         if ( !((total_read > 0) && (read == 0)) ) {
-            if ( receive() == true ) {
+            if ( receive_string() == true ) {
                 //printf("Request received.\n");
                 fr = f_read(&fil,&data[len],((RING_BUFFER_SIZE-1)-(UINT)len),(UINT*)&read);
                 if (FR_OK != fr) {
@@ -258,24 +257,25 @@ int main() {
                 len += read;
                 total_read += read;
                 if ( read != 0 ) {
+                    uint32_t msg[2] = {1,1};
                     size_t written = ring_buffer_push_string(&data[0], len);
                     memmove((void*)&data[0], (const void*)&data[written], len - written);
                     len -= written;
                     total_written += written;
-                    send((uint32_t)written);
+                    send_string(msg);
                 }
                 else {
+                    uint32_t msg[2] = {0,0};
                     printf("Total bytes read : %d\n", total_read);
                     printf("Total bytes written : %d\n", total_written);
                     printf("Length in buffer : %d\n", len);
-                    send((uint32_t)0);
+                    send_string(msg);
                     break;
                 }
             }
         }
 
         sleep_ms(10);
-
     }
 
     fr = f_close(&fil);

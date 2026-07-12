@@ -6,6 +6,7 @@ use embassy_rp::spinlock_mutex::blocking_mutex::*;
 use rp_pac::SIO;
 
 use core::mem;
+use crate::HANDSHAKE_ADDR;
 
 const D_TO_G_ADDR : usize = (0x20081000);
 const G_TO_D_ADDR : usize = (0x20081000 + mem::size_of::<SharedMessage>());
@@ -55,6 +56,24 @@ impl SharedMessage {
     }
 
     #[cfg(feature = "fifo")]
+    pub fn send_string(data : [u32;2]) {
+        let fifo = SIO.fifo();
+        cortex_m::asm::dmb();
+        for i in 0..2 {
+            if fifo.st().read().rdy() {
+                fifo.wr().write_value(data[i]);
+            } else {
+                if i == 1 {
+                    unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0x5EC07111); }
+                    panic!("FIFO blocked.")
+                } else {
+                    break;
+                }
+            }
+        }
+    }
+
+    #[cfg(feature = "fifo")]
     pub fn receive() -> (bool, usize) {
         let fifo = SIO.fifo();
         if fifo.st().read().vld() {
@@ -63,4 +82,24 @@ impl SharedMessage {
             (false, 0)
         }
     }
+
+    #[cfg(feature = "fifo")]
+    pub fn receive_string() -> (bool, usize) {
+        let fifo = SIO.fifo();
+        let mut ret = (false, 0usize);
+        for i in 0..2 {
+            if fifo.st().read().vld() {
+                ret = (true, fifo.rd().read() as usize)
+            } else {
+                if i == 1 {
+                    unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0x5EC07111); }
+                    panic!("FIFO blocked.")
+                } else {
+                    break;
+                }
+            }
+        }
+        ret
+    }
+
 }
