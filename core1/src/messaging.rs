@@ -7,8 +7,11 @@ use rp_pac::SIO;
 
 use core::mem;
 use crate::HANDSHAKE_ADDR;
+use crate::ring_buffer::Buffer;
 
+#[cfg(feature = "spinlock")]
 const D_TO_G_ADDR : usize = (0x20081000);
+#[cfg(feature = "spinlock")]
 const G_TO_D_ADDR : usize = (0x20081000 + mem::size_of::<SharedMessage>());
 
 #[derive(Clone, Copy)]
@@ -16,6 +19,14 @@ const G_TO_D_ADDR : usize = (0x20081000 + mem::size_of::<SharedMessage>());
 pub struct SharedMessage {
     update: u32,
     length: u32,
+}
+
+#[repr(u32)]
+#[derive(PartialEq)]
+pub enum MessageId {
+    NOOP = 0,
+    PLAY_FILE = 1,
+    GET_AUDIO = 2
 }
 
 impl SharedMessage {
@@ -67,9 +78,28 @@ impl SharedMessage {
                     unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0x5EC07111); }
                     panic!("FIFO blocked.")
                 } else {
-                    break;
+                    break; 
                 }
             }
+        }
+    }
+
+    #[cfg(feature = "fifo")]
+    pub fn send_message(cmd : MessageId, rb : &Buffer, data : Option<&[u8]>) {
+        let fifo = SIO.fifo();
+        if !fifo.st().read().rdy() {
+            return;
+        }
+        if data.is_some() {
+            rb.push_string(data.unwrap_or(&[0u8;0]));
+        }
+        cortex_m::asm::dmb();
+        fifo.wr().write_value(cmd as u32);
+        if !fifo.st().read().rdy() {
+            unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0x5EC07111); }
+            panic!("FIFO blocked.")
+        } else {
+            fifo.wr().write_value(data.unwrap_or(&[0u8;0]).len() as u32);
         }
     }
 
@@ -102,4 +132,29 @@ impl SharedMessage {
         ret
     }
 
+    #[cfg(feature = "fifo")]
+    pub fn receive_message(rb : &Buffer, data : &mut [u8]) -> (MessageId, usize) {
+        let fifo = SIO.fifo();
+        if !fifo.st().read().vld() {
+            return (MessageId::NOOP, 0usize);
+        }
+        let mid = match fifo.rd().read() {
+            0 => { MessageId::NOOP },
+            1 => { MessageId::PLAY_FILE },
+            2 => { MessageId::GET_AUDIO },
+            _ => { MessageId::NOOP }
+        };
+        if !fifo.st().read().vld() {
+            unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0x5EC07111); }
+            panic!("FIFO blocked.");
+            return (MessageId::NOOP, 0usize);
+        }
+        let _ = fifo.rd().read();
+        if !rb.is_empty() && mid != MessageId::NOOP {
+            let bytes = rb.pop_burst(data);
+            (mid, bytes)
+        } else {
+            (mid, 0)
+        }
+    }
 }

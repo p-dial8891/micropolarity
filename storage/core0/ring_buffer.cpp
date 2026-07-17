@@ -5,52 +5,6 @@
 //#include "mem_layout.h"
 #include "ring_buffer.h"
 
-#if 0
-#define RING_BUFFER_SIZE 256 // Must be a power of two
-#define BUFFER_MASK (RING_BUFFER_SIZE - 1)
-
-// Packed structure shared between C++ and Rust
-typedef struct {
-    volatile uint32_t head;            // Written by Producer
-    volatile uint32_t tail;            // Written by Consumer
-    uint8_t data[RING_BUFFER_SIZE];         // Array block
-} SharedRingBuffer;
-
-// Point directly to an unallocated high SRAM zone
-#define SHARED_BUFFER_ADDR 0x2007F000
-inline SharedRingBuffer* get_shared_buffer() {
-    return (SharedRingBuffer*)SHARED_BUFFER_ADDR;
-}
-
-void ring_buffer_init() {
-    SharedRingBuffer* rb = get_shared_buffer();
-    rb->head = 0;
-    rb->tail = 0;
-}
-
-bool ring_buffer_push(uint8_t byte) {
-    SharedRingBuffer* rb = get_shared_buffer();
-    
-    uint32_t current_head = rb->head;
-    uint32_t current_tail = rb->tail;
-
-    // Check if buffer is completely full
-    if (((current_head + 1) & BUFFER_MASK) == current_tail) {
-        return false; // Buffer overflow
-    }
-
-    rb->data[current_head] = byte;
-    
-    // Ensure memory write finishes before index is incremented (Memory Barrier)
-    __dmb(); 
-    rb->head = (current_head + 1) & BUFFER_MASK;
-    return true;
-}
-
-#include "pico/stdlib.h"
-#include "hardware/structs/sio.h"
-#endif
-
 #define BUFFER_MASK (RING_BUFFER_SIZE - 1)
 //#define WATERMARK_THRESHOLD 64 // Trigger doorbell every 64 bytes
 #define SHARED_BUFFER_ADDR 0x20080800
@@ -71,6 +25,35 @@ extern "C" {
         SharedRingBuffer* rb = get_shared_buffer();
         rb->head = 0;
         rb->tail = 0;
+    }
+
+    size_t ring_buffer_pop_burst(uint8_t* dest, const size_t length) {
+        SharedRingBuffer* rb = get_shared_buffer();
+        uint32_t current_head = rb->head;
+        uint32_t current_tail = rb->tail;
+        size_t bytes_copied = 0;
+
+        if (current_head == current_tail) {
+            return 0; // Buffer is completely empty
+        }
+
+        for (size_t i = 0; i < length; i++) {
+            if (current_head == current_tail) {
+                break; // buffer empty
+            }
+            dest[i] = rb->data[current_tail];
+            current_tail = (current_tail + 1) & BUFFER_MASK;
+            bytes_copied++;
+        }
+
+        if (bytes_copied > 0) {
+            // // Data Memory Barrier: Flushes the CPU write-buffer out to actual SRAM
+            // // before updating the head pointer.
+            // __dmb(); 
+            rb->tail = current_tail;
+        }
+
+        return bytes_copied;
     }
 
     // Optimized push that minimizes doorbell frequency
@@ -109,5 +92,4 @@ extern "C" {
 
         return bytes_written;
     }
-
 }

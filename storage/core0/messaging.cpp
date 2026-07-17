@@ -4,6 +4,7 @@
 #include "pico/multicore.h"
 #include "hardware/sync.h"
 #include "messaging.h"
+#include "ring_buffer.h"
 #include <stdio.h>
 
 #define D_TO_G_ADDR     (0x20081000)
@@ -67,6 +68,21 @@ extern "C" {
         }
     }
 
+    size_t send_message(MessageId cmd, uint8_t* data, size_t len) {
+        if (!multicore_fifo_wready())
+            return 0;
+        size_t ret = ring_buffer_push_string(const_cast<uint8_t*>(data), len);
+        __dmb();
+        multicore_fifo_push_blocking(cmd);
+        if (!multicore_fifo_wready()) {
+            printf("FIFO blocked.");
+            while (true) {};
+        }
+        multicore_fifo_push_blocking((uint32_t)len);
+
+        return ret;
+    }
+
     bool receive(void) {
         if (multicore_fifo_rvalid()) {
             (void)multicore_fifo_pop_blocking();
@@ -95,5 +111,21 @@ extern "C" {
         return ret;
     }
 
+    MessageId receive_message(uint8_t* data, const size_t length) {
+        if (!multicore_fifo_rvalid()) {
+            return MessageId::NOOP;
+        }
+        MessageId mid = static_cast<MessageId>(multicore_fifo_pop_blocking());
+        if (!multicore_fifo_rvalid()) {
+            printf("FIFO blocked.");
+            while (true) {};
+        }
+        (void)multicore_fifo_pop_blocking();
+        if (mid != MessageId::NOOP)
+            ring_buffer_pop_burst(data, length);
+
+        return mid;
+    }
+    
 #endif
 }

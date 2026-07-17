@@ -8,8 +8,8 @@ use embassy_time::{Duration, Timer, Instant};
 use embedded_io_async::{Read, ErrorType, ErrorKind};
 use static_cell::StaticCell;
 // use {defmt_rtt as _, panic_probe as _};
-use crate::ring_buffer::AsyncBurstReader;
-use crate::messaging::SharedMessage;
+use crate::ring_buffer::Buffer;
+use crate::messaging::{SharedMessage, MessageId};
 use nanomp3::Decoder;
 use crate::{HANDSHAKE_ADDR, Irqs};
 
@@ -23,19 +23,22 @@ const READ_SIZE: usize = 32768;
 // });
 
 struct FileReader {
-    rb : AsyncBurstReader
+    rb : Buffer
 }
 
 impl Read for FileReader {
     async fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
         let mut bytes_popped = 0;
         //log::info!("Sending request.");
-        SharedMessage::send_string([1u32;2]);
-        while let (false, _) = SharedMessage::receive_string() {
-            Timer::after_millis(5).await;
-        }
-        if !self.rb.is_empty() {
-            bytes_popped = self.rb.pop_burst(buf);
+        SharedMessage::send_message(MessageId::GET_AUDIO, &self.rb, None);
+        while let m = SharedMessage::receive_message(&self.rb, buf) {
+            if m.0 == MessageId::NOOP {
+                Timer::after_millis(5).await;
+                continue;
+            } else {
+                bytes_popped = m.1;
+                break;
+            }
         }
         log::info!("{} bytes popped from core 0", bytes_popped);
         Timer::after_millis(5).await;
@@ -77,7 +80,7 @@ pub async fn player_task(
     unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0x4EC07111); }
     
     let mut socket = FileReader{
-        rb : AsyncBurstReader::new(),
+        rb : Buffer::new(),
     };
 
     let mut read_buf : [u8;READ_SIZE] = [0u8;READ_SIZE];

@@ -15,9 +15,9 @@ struct RawRingBuffer {
     data: [u8; BUFFER_SIZE],
 }
 
-pub struct AsyncBurstReader;
+pub struct Buffer;
 
-impl AsyncBurstReader {
+impl Buffer {
     pub fn new() -> Self {
         Self
     }
@@ -48,6 +48,33 @@ impl AsyncBurstReader {
             // Release ordering flushes the new tail pointer back to Core 0 safely
             rb.tail.store(tail, Ordering::Release);
             bytes_copied
+        }
+    }
+
+    // Writes as many bytes as possible into the ring buffer at once
+    pub fn push_string(&self, in_buf: &[u8]) -> usize {
+        unsafe {
+            let mut bytes_written = 0;
+            let mut rb = &mut *(SHARED_BUFFER_ADDR as *mut RawRingBuffer);
+            
+            // Acquire ordering forces a hardware fence matching C++'s __dmb()
+            let mut current_head = rb.head.load(Ordering::Relaxed);
+            let current_tail = rb.tail.load(Ordering::Relaxed);
+
+            for i in 0..in_buf.len() {
+                if ((current_head + 1) & BUFFER_MASK) == current_tail {
+                    break; //buffer full
+                }
+                rb.data[current_head as usize] = in_buf[i];
+                current_head = ( current_head + 1 ) & BUFFER_MASK;
+                bytes_written += 1;
+            }
+
+            let mut head = current_head;
+
+            // Release ordering flushes the new tail pointer back to Core 0 safely
+            rb.head.store(head, Ordering::Relaxed);
+            bytes_written
         }
     }
 

@@ -191,7 +191,8 @@ int main() {
     gpio_pull_up(2);
     gpio_set_dir(2, GPIO_IN);
 
-    static uint8_t data[RING_BUFFER_SIZE];
+    static uint8_t rxdata[RING_BUFFER_SIZE];
+    static uint8_t txdata[RING_BUFFER_SIZE];
     size_t total_read = 0;
     size_t total_written = 0;
     size_t len = 0;
@@ -248,9 +249,9 @@ int main() {
         }
         // printf("Messaging started.");
         if ( !((total_read > 0) && (read == 0)) ) {
-            if ( receive_string() == true ) {
+            if ( receive_message(rxdata, 0) == MID_GET_AUDIO ) {
                 //printf("Request received.\n");
-                fr = f_read(&fil,&data[len],((RING_BUFFER_SIZE-1)-(UINT)len),(UINT*)&read);
+                fr = f_read(&fil,&txdata[len],((RING_BUFFER_SIZE-1)-(UINT)len),(UINT*)&read);
                 if (FR_OK != fr) {
                     printf("f_read error: %s (%d)\n", FRESULT_str(fr), fr);
                 }
@@ -258,18 +259,19 @@ int main() {
                 total_read += read;
                 if ( read != 0 ) {
                     uint32_t msg[2] = {1,1};
-                    size_t written = ring_buffer_push_string(&data[0], len);
-                    memmove((void*)&data[0], (const void*)&data[written], len - written);
+                    //size_t written = ring_buffer_push_string(&txdata[0], len);
+                    size_t written = send_message(MID_GET_AUDIO, &txdata[0], len);
+                    memmove((void*)&txdata[0], (const void*)&txdata[written], len - written);
                     len -= written;
                     total_written += written;
-                    send_string(msg);
+                    // send_string(msg);
                 }
                 else {
-                    uint32_t msg[2] = {0,0};
+                    uint8_t msg[2] = {0,0};
                     printf("Total bytes read : %d\n", total_read);
                     printf("Total bytes written : %d\n", total_written);
                     printf("Length in buffer : %d\n", len);
-                    send_string(msg);
+                    (void)send_message(MID_GET_AUDIO, &msg[0], 0);
                     break;
                 }
             }
