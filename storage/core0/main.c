@@ -141,7 +141,7 @@ int main() {
         return -1;
     }
 #endif
-    const char* const filename = "Remind_Me.mp3";
+    const char* const filename = "Ordinary.mp3";
     fr = f_open(&fil, filename, FA_READ );
     if (FR_OK != fr && FR_EXIST != fr) {
         panic("f_open(%s) error: %s (%d)\n", filename, FRESULT_str(fr), fr);
@@ -247,36 +247,32 @@ int main() {
                     break;
             }
         }
-        // printf("Messaging started.");
-        if ( !((total_read > 0) && (read == 0)) ) {
-            if ( receive_message(rxdata, 0) == MID_GET_AUDIO ) {
-                //printf("Request received.\n");
-                fr = f_read(&fil,&txdata[len],((RING_BUFFER_SIZE-1)-(UINT)len),(UINT*)&read);
-                if (FR_OK != fr) {
-                    printf("f_read error: %s (%d)\n", FRESULT_str(fr), fr);
-                }
-                len += read;
-                total_read += read;
-                if ( read != 0 ) {
-                    uint32_t msg[2] = {1,1};
-                    //size_t written = ring_buffer_push_string(&txdata[0], len);
-                    size_t written = send_message(MID_GET_AUDIO, &txdata[0], len);
-                    memmove((void*)&txdata[0], (const void*)&txdata[written], len - written);
-                    len -= written;
-                    total_written += written;
-                    // send_string(msg);
-                }
-                else {
-                    uint8_t msg[2] = {0,0};
-                    printf("Total bytes read : %d\n", total_read);
-                    printf("Total bytes written : %d\n", total_written);
-                    printf("Length in buffer : %d\n", len);
-                    (void)send_message(MID_GET_AUDIO, &msg[0], 0);
-                    break;
-                }
+        size_t rxlen = RING_BUFFER_SIZE;
+        if ( receive_message(rxdata, &rxlen) == MID_GET_AUDIO ) {
+            //printf("Request received.\n");
+            fr = f_read(&fil,&txdata[len],((RING_BUFFER_SIZE-1)-(UINT)len),(UINT*)&read);
+            if (FR_OK != fr) {
+                printf("f_read error: %s (%d)\n", FRESULT_str(fr), fr);
+            }
+            len += read;
+            total_read += read;
+            if ( len != 0 ) {
+                uint32_t msg[2] = {1,1};
+                //size_t written = ring_buffer_push_string(&txdata[0], len);
+                size_t written = send_message(MID_GET_AUDIO, &txdata[0], len);
+                memmove((void*)&txdata[0], (const void*)&txdata[written], len - written);
+                len -= written;
+                total_written += written;
+                // send_string(msg);
+            }
+            else {
+                uint8_t msg[2] = {0,0};
+                printf("Total bytes read : %d\n", total_read);
+                printf("Total bytes written : %d\n", total_written);
+                printf("Length in buffer : %d\n", len);
+                (void)send_message(MID_GET_AUDIO, &msg[0], 0);
             }
         }
-
         sleep_ms(10);
     }
 

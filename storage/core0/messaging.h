@@ -25,7 +25,7 @@ bool receive(void);
 void send_string(uint32_t* data);
 size_t send_message(MessageId cmd, uint8_t* data, size_t len);
 bool receive_string(void);
-MessageId receive_message(uint8_t* data, const size_t length);
+MessageId receive_message(uint8_t* data, size_t * length);
 #endif
 
 #ifdef __cplusplus

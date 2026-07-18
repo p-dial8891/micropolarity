@@ -149,8 +149,8 @@ impl SharedMessage {
             panic!("FIFO blocked.");
             return (MessageId::NOOP, 0usize);
         }
-        let _ = fifo.rd().read();
-        if !rb.is_empty() && mid != MessageId::NOOP {
+        let len = fifo.rd().read();
+        if !rb.is_empty() && mid != MessageId::NOOP && len != 0 {
             let bytes = rb.pop_burst(data);
             (mid, bytes)
         } else {

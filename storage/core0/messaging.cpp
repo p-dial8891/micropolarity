@@ -111,7 +111,7 @@ extern "C" {
         return ret;
     }
 
-    MessageId receive_message(uint8_t* data, const size_t length) {
+    MessageId receive_message(uint8_t* data, size_t *length) {
         if (!multicore_fifo_rvalid()) {
             return MessageId::NOOP;
         }
@@ -120,9 +120,9 @@ extern "C" {
             printf("FIFO blocked.");
             while (true) {};
         }
-        (void)multicore_fifo_pop_blocking();
-        if (mid != MessageId::NOOP)
-            ring_buffer_pop_burst(data, length);
+        size_t len = static_cast<size_t>(multicore_fifo_pop_blocking());
+        if ( ( mid != MessageId::NOOP ) && ( len != 0 ) )
+            *length = ring_buffer_pop_burst(data, *length);
 
         return mid;
     }
