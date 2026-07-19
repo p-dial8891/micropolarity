@@ -150,9 +150,13 @@ impl SharedMessage {
             return (MessageId::NOOP, 0usize);
         }
         let len = fifo.rd().read();
-        if !rb.is_empty() && mid != MessageId::NOOP && len != 0 {
-            let bytes = rb.pop_burst(data);
-            (mid, bytes)
+        if !rb.is_empty() && mid != MessageId::NOOP {
+            if mid == MessageId::GET_AUDIO || len != 0 {
+                let bytes = rb.pop_burst(data);
+                (mid, bytes)
+            } else {
+                (mid, 0)
+            }
         } else {
             (mid, 0)
         }

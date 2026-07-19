@@ -55,7 +55,7 @@ impl Buffer {
     pub fn push_string(&self, in_buf: &[u8]) -> usize {
         unsafe {
             let mut bytes_written = 0;
-            let mut rb = &mut *(SHARED_BUFFER_ADDR as *mut RawRingBuffer);
+            let rb = &mut *(SHARED_BUFFER_ADDR as *mut RawRingBuffer);
             
             // Acquire ordering forces a hardware fence matching C++'s __dmb()
             let mut current_head = rb.head.load(Ordering::Relaxed);
@@ -70,7 +70,7 @@ impl Buffer {
                 bytes_written += 1;
             }
 
-            let mut head = current_head;
+            let head = current_head;
 
             // Release ordering flushes the new tail pointer back to Core 0 safely
             rb.head.store(head, Ordering::Relaxed);

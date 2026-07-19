@@ -43,6 +43,8 @@ extern size_t ring_buffer_push_string(const uint8_t* source, size_t length);
 #define RUST_FLASH_ORIGIN   0x10200000
 #define RUST_RAM_END        (0x20010000 + (448 * 1024)) // 0x20080000
 
+#define MAX_FN_LENGTH 30
+
 /* SDIO Interface */
 static sd_sdio_if_t sdio_if = {
     /*
@@ -120,8 +122,6 @@ void direct_boot_core1(uint32_t entry_addr, uint32_t stack_ptr, uint32_t vtor) {
 int main() {
     stdio_init_all();
     sleep_ms(2000); // Wait for serial monitor to connect
-#if 1
-    // puts("Hello, world!");
 
     // See FatFs - Generic FAT Filesystem Module, "Application Interface",
     // http://elm-chan.org/fsw/ff/00index_e.html
@@ -132,36 +132,6 @@ int main() {
         return -1;
     }
 
-    static FIL fil;
-#if 0
-    const char* const filename = "filename.txt";
-    fr = f_open(&fil, filename, FA_WRITE | FA_OPEN_APPEND);
-    if (FR_OK != fr && FR_EXIST != fr) {
-        panic("f_open(%s) error: %s (%d)\n", filename, FRESULT_str(fr), fr);
-        return -1;
-    }
-#endif
-    const char* const filename = "Ordinary.mp3";
-    fr = f_open(&fil, filename, FA_READ );
-    if (FR_OK != fr && FR_EXIST != fr) {
-        panic("f_open(%s) error: %s (%d)\n", filename, FRESULT_str(fr), fr);
-        return -1;
-    }
-    printf("File open return code : %d", fr);
-
-#if 0
-
-    if (f_printf(&fil, "Hello, world!\n") < 0) {
-        printf("f_printf failed\n");
-    }
-
-    puts("Goodbye, world!");
-    for (;;) {
-        puts("Goodbye, world!");
-        sleep_ms(1000);
-    }
-#endif
-#endif
     printf("\n--- Starting Multicore Handshake Monitor ---\n");
 
     // 1. Force state to RESET
@@ -193,6 +163,9 @@ int main() {
 
     static uint8_t rxdata[RING_BUFFER_SIZE];
     static uint8_t txdata[RING_BUFFER_SIZE];
+    static FIL fil;
+    char filename[MAX_FN_LENGTH] = {};
+    bool file_open = false;
     size_t total_read = 0;
     size_t total_written = 0;
     size_t len = 0;
@@ -248,7 +221,8 @@ int main() {
             }
         }
         size_t rxlen = RING_BUFFER_SIZE;
-        if ( receive_message(rxdata, &rxlen) == MID_GET_AUDIO ) {
+        MessageId mid = receive_message(rxdata, &rxlen);
+        if ( mid == MID_GET_AUDIO ) {
             //printf("Request received.\n");
             fr = f_read(&fil,&txdata[len],((RING_BUFFER_SIZE-1)-(UINT)len),(UINT*)&read);
             if (FR_OK != fr) {
@@ -272,13 +246,34 @@ int main() {
                 printf("Length in buffer : %d\n", len);
                 (void)send_message(MID_GET_AUDIO, &msg[0], 0);
             }
+        } else
+        if ( mid == MID_PLAY_FILE ) {
+            uint8_t msg[2] = {0,0};
+            printf("Play file request received.\n");
+            if (file_open) {
+                fr = f_close(&fil);
+                if (FR_OK != fr) {
+                    printf("f_close error: %s (%d)\n", FRESULT_str(fr), fr);
+                } else {
+                    printf("File closed.\n");
+                }
+                file_open = false;
+            }
+            memset(filename,0,MAX_FN_LENGTH);
+            printf("Received length is %d\n", rxlen);
+            memcpy(filename, rxdata, rxlen);
+            printf("Opening file : %s", filename);
+            fr = f_open(&fil, filename, FA_READ );
+            if (FR_OK != fr && FR_EXIST != fr) {
+                panic("f_open(%s) error: %s (%d)\n", filename, FRESULT_str(fr), fr);
+                continue;
+            }
+            printf("File open return code : %d", fr);
+            (void)send_message(MID_PLAY_FILE, &msg[0], 0);
+            file_open = true;
+
         }
         sleep_ms(10);
-    }
-
-    fr = f_close(&fil);
-    if (FR_OK != fr) {
-        printf("f_close error: %s (%d)\n", FRESULT_str(fr), fr);
     }
 
     f_unmount("");

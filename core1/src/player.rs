@@ -12,18 +12,14 @@ use crate::ring_buffer::Buffer;
 use crate::messaging::{SharedMessage, MessageId};
 use nanomp3::Decoder;
 use crate::{HANDSHAKE_ADDR, Irqs};
+use embassy_net::{Stack, tcp::TcpSocket};
 
 const SAMPLE_RATE: u32 = 44100;
 const BIT_DEPTH: u32 = 16;
 const READ_SIZE: usize = 32768;
 
-// bind_interrupts!(struct PlayerIrqs {
-//     DMA_IRQ_0 => dma::InterruptHandler<DMA_CH1>;
-//     PIO1_IRQ_0 => InterruptHandler<PIO1>;
-// });
-
 struct FileReader {
-    rb : Buffer
+    pub rb : Buffer
 }
 
 impl Read for FileReader {
@@ -50,27 +46,68 @@ impl ErrorType for FileReader {
     type Error = ErrorKind;
 }
 
-#[embassy_executor::task]
+async fn select_next_track(
+    stack : embassy_net::Stack<'_>,
+    rx_buffer : &mut [u8],
+    tx_buffer : &mut [u8]
+) {
+    
+    let mut buffer = [0u8; 100];
+    let mut read = 0usize;
+    let rb = Buffer::new();
+    let mut socket = TcpSocket::new(stack, rx_buffer, tx_buffer);
+
+    socket.set_timeout(Some(Duration::from_secs(10)));
+    log::info!("Listening on TCP:1234...");
+    if let Err(e) = socket.accept(1234).await {
+        log::warn!("accept error: {:?}", e);
+        return;
+    }
+    log::info!("Received connection at {:?}", socket.local_endpoint());
+    log::info!("Reading socket.");
+    loop {
+        read += socket.read(&mut buffer[read..]).await.unwrap();
+        if let Some(n) = (&buffer[..read]).iter().position(|x| { *x == '\r' as u8 }) {
+            let mut rxbuf = [0;0usize];
+            read = 0;
+            log::info!("CR found at {}", n);
+            loop {
+                SharedMessage::send_message(MessageId::PLAY_FILE, &rb, Some(&buffer[..n]));
+                Timer::after_millis(1000).await;
+                if let m = SharedMessage::receive_message(&rb, &mut rxbuf) {
+                    if m.0 != MessageId::PLAY_FILE {
+                        continue;
+                    } else {
+                        return;
+                    }
+                }
+            }
+            buffer.as_mut_slice().fill(0);
+        } else {
+            Timer::after_millis(100).await;
+        }
+    }
+}
+
 pub async fn player_task(
-    pio : embassy_rp::Peri<'static, embassy_rp::peripherals::PIO0>,
-    dma : embassy_rp::Peri<'static, embassy_rp::peripherals::DMA_CH11>,
-    bit_clock_pin : embassy_rp::Peri<'static, embassy_rp::peripherals::PIN_27>,
-    left_right_clock_pin : embassy_rp::Peri<'static, embassy_rp::peripherals::PIN_28>,
-    data_pin :  embassy_rp::Peri<'static, embassy_rp::peripherals::PIN_3>,
+    player_p : crate::player_per,
+    stack : embassy_net::Stack<'_>,
+    rx_buffer : &mut [u8],
+    tx_buffer : &mut [u8]
 ) {
 
     // Setup pio state machine for i2s output
-    let Pio { mut common, sm0, .. } = Pio::new(pio, Irqs);
+    let Pio { mut common, sm0, .. } = Pio::new(player_p.pio, Irqs);
 
     let program = PioI2sOutProgram::new(&mut common);
     let mut i2s = PioI2sOut::new(
         &mut common,
         sm0,
-        dma,
+        player_p.dma,
         Irqs,
-        data_pin,
-        bit_clock_pin,
-        left_right_clock_pin,
+        player_p.data_pin,
+        player_p.bit_clock_pin,
+        player_p.left_right_clock_pin,
         SAMPLE_RATE,
         BIT_DEPTH,
         &program,
@@ -79,10 +116,6 @@ pub async fn player_task(
 
     unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0x4EC07111); }
     
-    let mut socket = FileReader{
-        rb : Buffer::new(),
-    };
-
     let mut read_buf : [u8;READ_SIZE] = [0u8;READ_SIZE];
     let mut used : usize = 0;   // bytes ( multiples of 4 )
     let mut read : usize = 0;
@@ -99,20 +132,20 @@ pub async fn player_task(
     let mut buffer_static_unaligned = READ_BUF_POOL.init_with(|| [MaybeUninit::zeroed(); BUFFER_SIZE] );
     let (prefix, mut buffer_static, suffix) = unsafe { buffer_static_unaligned.align_to_mut::<MaybeUninit<f32>>() };
     let (mut front_buffer, mut back_buffer) = buffer_static.split_at_mut(BUFFER_SIZE/(2*4));
+    let mut disk = FileReader{ rb : Buffer::new() };
 
     log::info!("Player started with {}, {}, {}, {}, {} samples/frame ...", 
         prefix.len(), suffix.len(), front_buffer.len(), back_buffer.len(), nanomp3::MAX_SAMPLES_PER_FRAME);
 
     'outer: loop {
         used = 0;
-        // log::warn!("Creating socket.");
-        // let value = create_socket(stack, rx_buffer, tx_buffer).await;
-        // let mut socket = value.unwrap();
+        log::info!("Selecting next track.");
+        select_next_track(stack, rx_buffer, tx_buffer).await;
 
         while used < ( front_buffer.len()*4 - (nanomp3::MAX_SAMPLES_PER_FRAME*4) ) {
             // READ MP3 DATA
             profile_start = Instant::now().as_millis();
-            read = (read-decoded) + match socket.read(&mut read_buf[(read-decoded)..]).await {
+            read = (read-decoded) + match disk.read(&mut read_buf[(read-decoded)..]).await {
                 Ok(0) => {
                     log::warn!("read EOF");
                     return;
@@ -168,7 +201,7 @@ pub async fn player_task(
 
             while used < ( back_buffer.len()*4 - (nanomp3::MAX_SAMPLES_PER_FRAME*4) ) {
                 // READ MP3 DATA
-                read = (read-decoded) + match socket.read(&mut read_buf[(read-decoded)..]).await {
+                read = (read-decoded) + match disk.read(&mut read_buf[(read-decoded)..]).await {
                     Ok(0) => {
                         log::warn!("read EOF");
                         stream_end = true;
