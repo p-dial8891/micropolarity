@@ -5,7 +5,7 @@ use embassy_time::{Duration, Timer};
 // For USB
 use embassy_rp::{peripherals::USB, usb};
 use embassy_rp::{bind_interrupts, dma};
-use embassy_rp::peripherals::{DMA_CH0, DMA_CH11, PIO0, PIO1};
+use embassy_rp::peripherals::{DMA_CH10, DMA_CH11, PIO0, PIO1};
 use embassy_rp::pio::{InterruptHandler, Pio};
 use embassy_rp::gpio::{Level, Output};
 use embassy_rp::interrupt::{self, InterruptExt};
@@ -30,7 +30,7 @@ pub const HANDSHAKE_ADDR: *mut u32 = 0x2008_0000 as *mut u32;
 const READ_SIZE : usize = 100;
 
 bind_interrupts!(struct Irqs {
-    DMA_IRQ_0 => dma::InterruptHandler<DMA_CH11>, dma::InterruptHandler<DMA_CH0>;
+    DMA_IRQ_0 => dma::InterruptHandler<DMA_CH11>, dma::InterruptHandler<DMA_CH10>;
     PIO0_IRQ_0 => InterruptHandler<PIO0>;
     PIO1_IRQ_0 => InterruptHandler<PIO1>;
     USBCTRL_IRQ => usb::InterruptHandler<USB>;
@@ -42,7 +42,7 @@ pub struct wifi_per {
     p_24 : embassy_rp::Peri<'static, embassy_rp::peripherals::PIN_24>,
     p_29 : embassy_rp::Peri<'static, embassy_rp::peripherals::PIN_29>,    
     pio1 : embassy_rp::Peri<'static, embassy_rp::peripherals::PIO1>,
-    dma : embassy_rp::Peri<'static, embassy_rp::peripherals::DMA_CH0>
+    dma : embassy_rp::Peri<'static, embassy_rp::peripherals::DMA_CH10>
 }
 
 pub struct player_per {
@@ -199,7 +199,7 @@ fn main() -> ! {
             spawner,
             wifi_per { 
                 p_23 : p.PIN_23, p_25 : p.PIN_25, p_24 : p.PIN_24, 
-                p_29 : p.PIN_29, pio1 : p.PIO1, dma : p.DMA_CH0 
+                p_29 : p.PIN_29, pio1 : p.PIO1, dma : p.DMA_CH10 
             },
             player_per {
                 pio : p.PIO0, dma : p.DMA_CH11, 
