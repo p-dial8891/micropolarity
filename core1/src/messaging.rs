@@ -6,6 +6,7 @@ use embassy_rp::spinlock_mutex::blocking_mutex::*;
 use rp_pac::SIO;
 
 use core::mem;
+use embassy_time::{Timer};
 use crate::HANDSHAKE_ADDR;
 use crate::ring_buffer::Buffer;
 
@@ -85,7 +86,8 @@ impl SharedMessage {
     }
 
     #[cfg(feature = "fifo")]
-    pub fn send_message(cmd : MessageId, rb : &Buffer, data : Option<&[u8]>) {
+    pub async fn send_message(cmd : MessageId, rb : &Buffer, data : Option<&[u8]>) {
+        let mut count = 3;
         let fifo = SIO.fifo();
         if !fifo.st().read().rdy() {
             return;
@@ -95,11 +97,16 @@ impl SharedMessage {
         }
         cortex_m::asm::dmb();
         fifo.wr().write_value(cmd as u32);
-        if !fifo.st().read().rdy() {
+        while !fifo.st().read().rdy() && count > 0 {
+            unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0x2222_2222); }
+            Timer::after_millis(1).await;
+            count -= 1;
+        } 
+        if count != 0 {
+            fifo.wr().write_value(data.unwrap_or(&[0u8;0]).len() as u32);
+        } else {
             unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0x5EC07111); }
             panic!("FIFO blocked.")
-        } else {
-            fifo.wr().write_value(data.unwrap_or(&[0u8;0]).len() as u32);
         }
     }
 
@@ -122,7 +129,7 @@ impl SharedMessage {
                 ret = (true, fifo.rd().read() as usize)
             } else {
                 if i == 1 {
-                    unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0x5EC07111); }
+                    unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0x6EC07111); }
                     panic!("FIFO blocked.")
                 } else {
                     break;
@@ -133,7 +140,8 @@ impl SharedMessage {
     }
 
     #[cfg(feature = "fifo")]
-    pub fn receive_message(rb : &Buffer, data : &mut [u8]) -> (MessageId, usize) {
+    pub async fn receive_message(rb : &Buffer, data : &mut [u8]) -> (MessageId, usize) {
+        let mut count = 3;
         let fifo = SIO.fifo();
         if !fifo.st().read().vld() {
             return (MessageId::NOOP, 0usize);
@@ -142,10 +150,19 @@ impl SharedMessage {
             0 => { MessageId::NOOP },
             1 => { MessageId::PLAY_FILE },
             2 => { MessageId::GET_AUDIO },
-            _ => { MessageId::NOOP }
+            _ => { 
+                unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0x6EC07111); }
+                panic!("FIFO blocked.");
+                MessageId::NOOP 
+            }
         };
-        if !fifo.st().read().vld() {
-            unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0x5EC07111); }
+        while !fifo.st().read().vld() && count > 0 {
+            unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0x2222_2222); }
+            Timer::after_millis(1).await;
+            count -= 1;
+        }
+        if count == 0 {
+            unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0x6EC07111); }
             panic!("FIFO blocked.");
             return (MessageId::NOOP, 0usize);
         }

@@ -26,8 +26,8 @@ impl Read for FileReader {
     async fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
         let mut bytes_popped = 0;
         //log::info!("Sending request.");
-        SharedMessage::send_message(MessageId::GET_AUDIO, &self.rb, None);
-        while let m = SharedMessage::receive_message(&self.rb, buf) {
+        SharedMessage::send_message(MessageId::GET_AUDIO, &self.rb, None).await;
+        while let m = SharedMessage::receive_message(&self.rb, buf).await {
             if m.0 == MessageId::NOOP {
                 Timer::after_millis(5).await;
                 continue;
@@ -72,9 +72,9 @@ async fn select_next_track(
             read = 0;
             log::info!("CR found at {}", n);
             loop {
-                SharedMessage::send_message(MessageId::PLAY_FILE, &rb, Some(&buffer[..n]));
+                SharedMessage::send_message(MessageId::PLAY_FILE, &rb, Some(&buffer[..n])).await;
                 Timer::after_millis(1000).await;
-                if let m = SharedMessage::receive_message(&rb, &mut rxbuf) {
+                if let m = SharedMessage::receive_message(&rb, &mut rxbuf).await {
                     if m.0 != MessageId::PLAY_FILE {
                         continue;
                     } else {

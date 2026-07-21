@@ -206,9 +206,6 @@ int main() {
                 case 0x11111111:
                     printf("[Core 1 Sync]: SUCCESS! Core 1 reached Rust main entry.\n");
                     break;
-                case 0x22222222:
-                    printf("[Core 1 Sync]: SUCCESS! Core 1 configured its VTOR registers.\n");
-                    break;
                 case 0x33333333:
                     printf("[Core 1 Sync]: SUCCESS! Core 1 completed init and is running.\n");
                     break;
@@ -221,15 +218,18 @@ int main() {
                 case 0x4EC07111:
                     printf("[Core 1 Sync]: SUCCESS! Core 1 clock init started.\n");
                     break;
+                case 0x22222222:
+                    printf("[Core 1 Sync]: SUCCESS! Core 1 FIFO read missed.\n");
+                    break;                
                 case 0x5EC07111:
-                    printf("[Core 1 Sync]: SUCCESS! Core 1 clock init finished.\n");
+                    printf("[Core 1 Sync]: SUCCESS! Core 1 send message blocked.\n");
                     break;
                 case 0x6EC07111:
-                    printf("[Core 1 Sync]: SUCCESS! Core 1 detected key press.\n");
+                    printf("[Core 1 Sync]: SUCCESS! Core 1 receive message blocked.\n");
                     break;
-                case 0x7EC07111:
-                    printf("[Core 1 Sync]: SUCCESS! Core 1 detected key release.\n");
-                    break;
+                // case 0x7EC07111:
+                //     printf("[Core 1 Sync]: SUCCESS! Core 1 detected key release.\n");
+                //     break;
                 default:
                     // If you see a completely random address value here, Core 1 hard-faulted
                     // and printed its stack trace memory markers over the handshake window.
@@ -279,13 +279,13 @@ int main() {
             memset(filename,0,MAX_FN_LENGTH);
             printf("Received length is %d\n", rxlen);
             memcpy(filename, rxdata, rxlen);
-            printf("Opening file : %s", filename);
+            printf("Opening file : %s\n", filename);
             fr = f_open(&fil, filename, FA_READ );
             if (FR_OK != fr && FR_EXIST != fr) {
                 panic("f_open(%s) error: %s (%d)\n", filename, FRESULT_str(fr), fr);
                 continue;
             }
-            printf("File open return code : %d", fr);
+            printf("File open return code : %d\n", fr);
             (void)send_message(MID_PLAY_FILE, &msg[0], 0);
             file_open = true;
 

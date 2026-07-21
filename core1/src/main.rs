@@ -181,9 +181,6 @@ fn main() -> ! {
         core::ptr::write_volatile(vtor, 0x1020_0000); // 2MB offset origin
     }
 
-    // 3. SIGNAL STAGE 2: Memory mapped vectors are isolated, starting system init
-    unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0x2222_2222); }
-
     // Bring up the Embassy RP drivers (using existing C++ clock trees)
     let p = embassy_rp::init_without_clocks();
 
