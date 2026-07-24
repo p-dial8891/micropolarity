@@ -22,6 +22,7 @@ typedef enum {
 void send(uint32_t length);
 bool receive(void);
 #ifdef FIFO
+static const int FIFO_RETRY_COUNT = 3;
 void send_string(uint32_t* data);
 size_t send_message(MessageId cmd, uint8_t* data, size_t len);
 bool receive_string(void);

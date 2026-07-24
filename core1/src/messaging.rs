@@ -15,6 +15,8 @@ const D_TO_G_ADDR : usize = (0x20081000);
 #[cfg(feature = "spinlock")]
 const G_TO_D_ADDR : usize = (0x20081000 + mem::size_of::<SharedMessage>());
 
+const FIFO_RETRY_COUNT : i32 = 3;
+
 #[derive(Clone, Copy)]
 #[repr(C)]
 pub struct SharedMessage {
@@ -141,7 +143,7 @@ impl SharedMessage {
 
     #[cfg(feature = "fifo")]
     pub async fn receive_message(rb : &Buffer, data : &mut [u8]) -> (MessageId, usize) {
-        let mut count = 3;
+        let mut count = FIFO_RETRY_COUNT;
         let fifo = SIO.fifo();
         if !fifo.st().read().vld() {
             return (MessageId::NOOP, 0usize);

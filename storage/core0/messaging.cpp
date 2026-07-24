@@ -69,12 +69,17 @@ extern "C" {
     }
 
     size_t send_message(MessageId cmd, uint8_t* data, size_t len) {
+        int count = FIFO_RETRY_COUNT;
         if (!multicore_fifo_wready())
             return 0;
         size_t ret = ring_buffer_push_string(const_cast<uint8_t*>(data), len);
         __dmb();
         multicore_fifo_push_blocking(cmd);
-        if (!multicore_fifo_wready()) {
+        if (!multicore_fifo_wready() && (count > 0)) {
+            sleep_ms(1);
+            count--;
+        }
+        if (count == 0) {
             printf("FIFO blocked.");
             while (true) {};
         }
@@ -112,11 +117,16 @@ extern "C" {
     }
 
     MessageId receive_message(uint8_t* data, size_t *length) {
+        int count = FIFO_RETRY_COUNT;
         if (!multicore_fifo_rvalid()) {
             return MessageId::NOOP;
         }
         MessageId mid = static_cast<MessageId>(multicore_fifo_pop_blocking());
-        if (!multicore_fifo_rvalid()) {
+        while (!multicore_fifo_rvalid() && (count > 0)) {
+            sleep_ms(1);
+            count--;
+        }
+        if (count == 0) {
             printf("FIFO blocked.");
             while (true) {};
         }

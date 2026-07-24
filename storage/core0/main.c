@@ -43,7 +43,7 @@ extern size_t ring_buffer_push_string(const uint8_t* source, size_t length);
 #define RUST_FLASH_ORIGIN   0x10200000
 #define RUST_RAM_END        (0x20010000 + (448 * 1024)) // 0x20080000
 
-#define MAX_FN_LENGTH 30
+#define MAX_FN_LENGTH 256
 
 /* SDIO Interface */
 static sd_sdio_if_t sdio_if = {
@@ -219,13 +219,13 @@ int main() {
                     printf("[Core 1 Sync]: SUCCESS! Core 1 clock init started.\n");
                     break;
                 case 0x22222222:
-                    printf("[Core 1 Sync]: SUCCESS! Core 1 FIFO read missed.\n");
+                    printf("[Core 1 Sync]: WARNING! Core 1 FIFO blocked.\n");
                     break;                
                 case 0x5EC07111:
-                    printf("[Core 1 Sync]: SUCCESS! Core 1 send message blocked.\n");
+                    printf("[Core 1 Sync]: ERROR! Core 1 send message blocked.\n");
                     break;
                 case 0x6EC07111:
-                    printf("[Core 1 Sync]: SUCCESS! Core 1 receive message blocked.\n");
+                    printf("[Core 1 Sync]: ERROR! Core 1 receive message blocked.\n");
                     break;
                 // case 0x7EC07111:
                 //     printf("[Core 1 Sync]: SUCCESS! Core 1 detected key release.\n");
