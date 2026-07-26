@@ -62,3 +62,4 @@ embedded-io-async = "0.7.0"
 [features]
 spinlock = []
 fifo = []
+stress-test = []

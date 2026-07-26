@@ -46,6 +46,7 @@ impl ErrorType for FileReader {
     type Error = ErrorKind;
 }
 
+#[cfg(not(feature = "stress-test"))]
 async fn select_next_track(
     stack : embassy_net::Stack<'_>,
     rx_buffer : &mut [u8],
@@ -76,7 +77,7 @@ async fn select_next_track(
                 Timer::after_millis(1000).await;
                 if let m = SharedMessage::receive_message(&rb, &mut rxbuf).await {
                     if m.0 != MessageId::PLAY_FILE {
-                        continue;
+                        break;
                     } else {
                         return;
                     }
@@ -88,6 +89,67 @@ async fn select_next_track(
         }
     }
 }
+
+#[cfg(feature = "stress-test")]
+// async fn select_next_track() {
+//     let buffer = "17 - Oblivion.mp3".as_bytes();
+//     let rb = Buffer::new();
+//     let mut rxbuf = [0;0usize];
+//     loop {
+//         SharedMessage::send_message(MessageId::PLAY_FILE, &rb, Some(buffer)).await;
+//         Timer::after_millis(1000).await;
+//         if let m = SharedMessage::receive_message(&rb, &mut rxbuf).await {
+//             if m.0 != MessageId::PLAY_FILE {
+//                 continue;
+//             } else {
+//                 return;
+//             }
+//         }
+//     }
+// }
+async fn select_next_track<'c>(
+    stack : embassy_net::Stack<'c>,
+    rx_buffer : &'c mut [u8],
+    tx_buffer : &'c mut [u8]
+) -> Result<TcpSocket<'c>, ()>{
+    
+    let mut buffer = [0u8; 100];
+    let mut read = 0usize;
+    let rb = Buffer::new();
+    let mut socket = TcpSocket::new(stack, rx_buffer, tx_buffer);
+
+    socket.set_timeout(None);
+    log::info!("Listening on TCP:1234...");
+    if let Err(e) = socket.accept(1234).await {
+        log::warn!("accept error: {:?}", e);
+        return Err(());
+    }
+    log::info!("Received connection at {:?}", socket.local_endpoint());
+    log::info!("Reading socket.");
+    loop {
+        read += socket.read(&mut buffer[read..]).await.unwrap();
+        if let Some(n) = (&buffer[..read]).iter().position(|x| { *x == '\r' as u8 }) {
+            let mut rxbuf = [0;0usize];
+            read = 0;
+            log::info!("CR found at {}", n);
+            loop {
+                SharedMessage::send_message(MessageId::PLAY_FILE, &rb, Some(&buffer[..n])).await;
+                Timer::after_millis(1000).await;
+                if let m = SharedMessage::receive_message(&rb, &mut rxbuf).await {
+                    if m.0 != MessageId::PLAY_FILE {
+                        break;
+                    } else {
+                        return Ok(socket);
+                    }
+                }
+            }
+            buffer.as_mut_slice().fill(0);
+        } else {
+            Timer::after_millis(100).await;
+        }
+    }
+}
+
 
 pub async fn player_task(
     player_p : crate::player_per,
@@ -137,10 +199,26 @@ pub async fn player_task(
     log::info!("Player started with {}, {}, {}, {}, {} samples/frame ...", 
         prefix.len(), suffix.len(), front_buffer.len(), back_buffer.len(), nanomp3::MAX_SAMPLES_PER_FRAME);
 
+    #[cfg(feature = "stress-test")]
+    {
+        log::info!("INFO: Stress testing player.");
+    }
+
     'outer: loop {
         used = 0;
         log::info!("Selecting next track.");
-        select_next_track(stack, rx_buffer, tx_buffer).await;
+        #[cfg(not(feature = "stress-test"))]
+        {
+            select_next_track(stack, rx_buffer, tx_buffer).await;
+        }
+        #[cfg(feature = "stress-test")]
+        let mut socket : TcpSocket<'_> = {
+            // Timer::after_millis(1000).await;
+            // select_next_track().await;
+            let socket_wrapped : Result<TcpSocket<'_>, ()> =
+                select_next_track(stack, rx_buffer, tx_buffer).await;
+            socket_wrapped.unwrap()
+        };
 
         while used < ( front_buffer.len()*4 - (nanomp3::MAX_SAMPLES_PER_FRAME*4) ) {
             // READ MP3 DATA
@@ -239,8 +317,13 @@ pub async fn player_task(
                     log::warn!("Ending playback.");
                     // stream_end = false;
                     // socket.write(&[1]).await.unwrap();
-                    // socket.close();
-                    // socket.flush().await.unwrap();
+                    #[cfg(feature = "stress-test")]
+                    {
+                        socket.close();
+                        socket.flush().await.unwrap();
+                        mem::drop(socket);
+                    }
+
                     continue 'outer;
                 }
             }
