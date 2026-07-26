@@ -181,6 +181,7 @@ int main() {
     static uint8_t rxdata[RING_BUFFER_SIZE];
     static uint8_t txdata[RING_BUFFER_SIZE];
     static FIL fil;
+    static FIL debug_fil;
     char filename[MAX_FN_LENGTH] = {};
     bool file_open = false;
     size_t total_read = 0;
@@ -192,6 +193,11 @@ int main() {
 
     extern uint32_t SystemCoreClock;
     printf("System core clock is %d\n", SystemCoreClock);
+
+    fr = f_open(&debug_fil, "debug.log", FA_WRITE | FA_CREATE_ALWAYS);
+    if (FR_OK != fr && FR_EXIST != fr) {
+        panic("f_open(%s) error: %s (%d)\n", "debug.log", FRESULT_str(fr), fr);
+    }
 
     while (1) {
         uint32_t current_state = *HANDSHAKE_ADDR;
@@ -220,12 +226,18 @@ int main() {
                     break;
                 case 0x22222222:
                     printf("[Core 1 Sync]: WARNING! Core 1 FIFO blocked.\n");
-                    break;                
+                    f_printf(&debug_fil, "[Core 1 Sync]: WARNING! Core 1 FIFO blocked.\n");
+                    f_sync(&debug_fil);
+                    break;
                 case 0x5EC07111:
                     printf("[Core 1 Sync]: ERROR! Core 1 send message blocked.\n");
+                    f_printf(&debug_fil, "[Core 1 Sync]: ERROR! Core 1 send message blocked.\n");
+                    f_sync(&debug_fil);
                     break;
                 case 0x6EC07111:
                     printf("[Core 1 Sync]: ERROR! Core 1 receive message blocked.\n");
+                    f_printf(&debug_fil, "[Core 1 Sync]: ERROR! Core 1 receive message blocked.\n");
+                    f_sync(&debug_fil);
                     break;
                 // case 0x7EC07111:
                 //     printf("[Core 1 Sync]: SUCCESS! Core 1 detected key release.\n");
@@ -238,7 +250,14 @@ int main() {
             }
         }
         size_t rxlen = RING_BUFFER_SIZE;
-        MessageId mid = receive_message(rxdata, &rxlen);
+        uint32_t error;
+        error = MID_NO_ERROR;
+        MessageId mid = receive_message(rxdata, &rxlen, &error);
+        if (error == MID_FIFO_BLOCKED) {
+            f_printf(&debug_fil, "[Core 0]: ERROR! Receive FIFO blocked.");
+            f_sync(&debug_fil);
+            panic("FIFO receive blocked.");
+        } else 
         if ( mid == MID_GET_AUDIO ) {
             //printf("Request received.\n");
             fr = f_read(&fil,&txdata[len],((RING_BUFFER_SIZE-1)-(UINT)len),(UINT*)&read);
@@ -250,7 +269,7 @@ int main() {
             if ( len != 0 ) {
                 uint32_t msg[2] = {1,1};
                 //size_t written = ring_buffer_push_string(&txdata[0], len);
-                size_t written = send_message(MID_GET_AUDIO, &txdata[0], len);
+                size_t written = send_message(MID_GET_AUDIO, &txdata[0], len, &error);
                 memmove((void*)&txdata[0], (const void*)&txdata[written], len - written);
                 len -= written;
                 total_written += written;
@@ -261,7 +280,12 @@ int main() {
                 printf("Total bytes read : %d\n", total_read);
                 printf("Total bytes written : %d\n", total_written);
                 printf("Length in buffer : %d\n", len);
-                (void)send_message(MID_GET_AUDIO, &msg[0], 0);
+                (void)send_message(MID_GET_AUDIO, &msg[0], 0, &error);
+                if (error == MID_FIFO_BLOCKED) {
+                    f_printf(&debug_fil, "[Core 0]: ERROR! Send fifo blocked.");
+                    f_sync(&debug_fil);
+                    panic("FIFO send blocked.");
+                }
             }
         } else
         if ( mid == MID_PLAY_FILE ) {
@@ -282,13 +306,19 @@ int main() {
             printf("Opening file : %s\n", filename);
             fr = f_open(&fil, filename, FA_READ );
             if (FR_OK != fr && FR_EXIST != fr) {
+                f_printf(&debug_fil, "[Core 0]: Could not open file - %s", filename);
+                f_sync(&debug_fil);
                 panic("f_open(%s) error: %s (%d)\n", filename, FRESULT_str(fr), fr);
                 continue;
             }
             printf("File open return code : %d\n", fr);
-            (void)send_message(MID_PLAY_FILE, &msg[0], 0);
+            (void)send_message(MID_PLAY_FILE, &msg[0], 0, &error);
+            if (error == MID_FIFO_BLOCKED) {
+                f_printf(&debug_fil, "[Core 0]: ERROR! Send fifo blocked.");
+                f_sync(&debug_fil);
+                panic("FIFO send blocked.");
+            }
             file_open = true;
-
         }
         sleep_ms(10);
     }

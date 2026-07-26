@@ -68,10 +68,13 @@ extern "C" {
         }
     }
 
-    size_t send_message(MessageId cmd, uint8_t* data, size_t len) {
+    size_t send_message(MessageId cmd, uint8_t* data, size_t len, uint32_t * error) {
         int count = FIFO_RETRY_COUNT;
-        if (!multicore_fifo_wready())
+        if (!multicore_fifo_wready()) {
+            printf("FIFO blocked.");
+            *error = MidErrorCode::FIFO_BLOCKED;
             return 0;
+        }
         size_t ret = ring_buffer_push_string(const_cast<uint8_t*>(data), len);
         __dmb();
         multicore_fifo_push_blocking(cmd);
@@ -81,7 +84,8 @@ extern "C" {
         }
         if (count == 0) {
             printf("FIFO blocked.");
-            while (true) {};
+            *error = MidErrorCode::FIFO_BLOCKED;
+            return 0;
         }
         multicore_fifo_push_blocking((uint32_t)len);
 
@@ -116,7 +120,7 @@ extern "C" {
         return ret;
     }
 
-    MessageId receive_message(uint8_t* data, size_t *length) {
+    MessageId receive_message(uint8_t* data, size_t *length, uint32_t* error) {
         int count = FIFO_RETRY_COUNT;
         if (!multicore_fifo_rvalid()) {
             return MessageId::NOOP;
@@ -128,7 +132,9 @@ extern "C" {
         }
         if (count == 0) {
             printf("FIFO blocked.");
-            while (true) {};
+            *error = MidErrorCode::FIFO_BLOCKED;
+            // while (true) {};
+            return MessageId::NOOP;
         }
         size_t len = static_cast<size_t>(multicore_fifo_pop_blocking());
         if ( ( mid != MessageId::NOOP ) && ( len != 0 ) )

@@ -20,8 +20,8 @@ use embassy_rp::clocks::RoscRng;
 use cyw43::{aligned_bytes, SpiBus, JoinOptions};
 use cyw43_pio::{PioSpi, RM2_CLOCK_DIVIDER};
 
-mod ring_buffer;
-mod messaging;
+// mod ring_buffer;
+// mod messaging;
 mod player;
 mod auth;
 

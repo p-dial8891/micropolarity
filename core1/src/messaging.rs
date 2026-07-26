@@ -7,8 +7,10 @@ use rp_pac::SIO;
 
 use core::mem;
 use embassy_time::{Timer};
-use crate::HANDSHAKE_ADDR;
+//use crate::HANDSHAKE_ADDR;
 use crate::ring_buffer::Buffer;
+
+const HANDSHAKE_ADDR: *mut u32 = 0x2008_0000 as *mut u32;
 
 #[cfg(feature = "spinlock")]
 const D_TO_G_ADDR : usize = (0x20081000);
@@ -89,9 +91,12 @@ impl SharedMessage {
 
     #[cfg(feature = "fifo")]
     pub async fn send_message(cmd : MessageId, rb : &Buffer, data : Option<&[u8]>) {
-        let mut count = 3;
+        let mut count = FIFO_RETRY_COUNT;
         let fifo = SIO.fifo();
         if !fifo.st().read().rdy() {
+            unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0x5EC07111); }
+            cortex_m::asm::dmb();
+            panic!("FIFO blocked.");
             return;
         }
         if data.is_some() {
@@ -108,6 +113,7 @@ impl SharedMessage {
             fifo.wr().write_value(data.unwrap_or(&[0u8;0]).len() as u32);
         } else {
             unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0x5EC07111); }
+            cortex_m::asm::dmb();
             panic!("FIFO blocked.")
         }
     }
@@ -154,6 +160,7 @@ impl SharedMessage {
             2 => { MessageId::GET_AUDIO },
             _ => { 
                 unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0x6EC07111); }
+                cortex_m::asm::dmb();
                 panic!("FIFO blocked.");
                 MessageId::NOOP 
             }
@@ -165,6 +172,7 @@ impl SharedMessage {
         }
         if count == 0 {
             unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0x6EC07111); }
+            cortex_m::asm::dmb();
             panic!("FIFO blocked.");
             return (MessageId::NOOP, 0usize);
         }
