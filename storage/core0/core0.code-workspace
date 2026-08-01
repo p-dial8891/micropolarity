@@ -8,6 +8,9 @@
 		},
 		{
 			"path": "../../../../Users/Developer/.pico-sdk"
+		},
+		{
+			"path": "../lvgl"
 		}
 	],
 	"settings": {

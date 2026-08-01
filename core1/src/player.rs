@@ -189,7 +189,7 @@ pub async fn player_task(
     let mut profile_start = 0;
     let mut profile_end = 0;
 
-    const BUFFER_SIZE : usize = 300*1024; // bytes
+    const BUFFER_SIZE : usize = 246*1024; // bytes
     static READ_BUF_POOL: StaticCell<[MaybeUninit<u8>;BUFFER_SIZE]> = StaticCell::new();
     let mut buffer_static_unaligned = READ_BUF_POOL.init_with(|| [MaybeUninit::zeroed(); BUFFER_SIZE] );
     let (prefix, mut buffer_static, suffix) = unsafe { buffer_static_unaligned.align_to_mut::<MaybeUninit<f32>>() };

@@ -6,9 +6,9 @@ MEMORY
   /* Pico 2 W contains 4MB Flash total */
   FLASH : ORIGIN = 0x10200000, LENGTH = 2M
 
-  /* Shift RAM origin forward by 64KB (0x00010000) to isolate from Core 0 */
+  /* Shift RAM origin forward by 128KB (0x00020000) to isolate from Core 0 */
   /* Main RAM spans from 0x20000000 to 0x20080000 (512KB) */
-  RAM   : ORIGIN = 0x20010000, LENGTH = 448K
+  RAM   : ORIGIN = 0x20020000, LENGTH = 384K
 
   /* Use Scratchpad Bank 1 for unmanaged cross-language sync structs */
   SHARED_RAM : ORIGIN = 0x20080000, LENGTH = 8K

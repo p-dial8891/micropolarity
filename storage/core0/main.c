@@ -24,6 +24,9 @@ specific language governing permissions and limitations under the License.
 #include "pico/multicore.h"
 #include "ring_buffer.h"
 #include "messaging.h"
+#include "display.h"
+#include "lvgl.h"
+#include "lvgl/examples/lv_examples.h"
 /*
 
 This file should be tailored to match the hardware design.
@@ -44,6 +47,7 @@ extern size_t ring_buffer_push_string(const uint8_t* source, size_t length);
 #define RUST_RAM_END        (0x20010000 + (448 * 1024)) // 0x20080000
 
 #define MAX_FN_LENGTH 256
+#define TICK_PERIOD (10)
 
 /* SDIO Interface */
 static sd_sdio_if_t sdio_if = {
@@ -173,6 +177,7 @@ int main() {
     //direct_boot_core1(rust_entry_address, rust_stack_pointer, RUST_FLASH_ORIGIN);
     sleep_ms(1000);
 
+    display_init();
     ring_buffer_init();
     gpio_init(2);
     gpio_pull_up(2);
@@ -190,6 +195,7 @@ int main() {
     size_t read = 0;
     size_t written = 0;
     uint32_t last_state = 0xFFFFFFFF;
+    bool last_pin_val = true;
 
     extern uint32_t SystemCoreClock;
     printf("System core clock is %d\n", SystemCoreClock);
@@ -200,6 +206,15 @@ int main() {
     }
 
     while (1) {
+
+        bool pin_val = gpio_get(2);
+
+        if ( pin_val != last_pin_val ) {
+            printf("Key pressed/depressed: %d\n", pin_val);
+            last_pin_val = pin_val;
+            lv_example_get_started_1();
+        }
+
         uint32_t current_state = *HANDSHAKE_ADDR;
 
         if (current_state != last_state) {
@@ -320,7 +335,10 @@ int main() {
             }
             file_open = true;
         }
-        sleep_ms(10);
+#if 1
+        display_tick(TICK_PERIOD);
+#endif
+        sleep_ms(TICK_PERIOD);
     }
 
     f_unmount("");
