@@ -37,6 +37,7 @@ https://github.com/carlk3/no-OS-FatFS-SD-SDIO-SPI-RPi-Pico/tree/main#customizing
 */
 
 #include "hw_config.h"
+#include "main.h"
 
 extern void ring_buffer_init(void);
 extern size_t ring_buffer_push_string(const uint8_t* source, size_t length);
@@ -47,8 +48,7 @@ extern size_t ring_buffer_push_string(const uint8_t* source, size_t length);
 #define RUST_RAM_END        (0x20010000 + (448 * 1024)) // 0x20080000
 
 #define MAX_FN_LENGTH 256
-#define TICK_PERIOD (10)
-#define TICK_FACTOR (50)
+#define TICK_FACTOR   (25)
 
 /* SDIO Interface */
 static sd_sdio_if_t sdio_if = {
