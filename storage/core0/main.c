@@ -340,7 +340,7 @@ int main() {
                 lv_label_set_text(label, filename);
             }
             file_open = true;
-        }
+        } else
 #if 1
         if ( tick_counter <= 0 ) {
             tick_counter = TICK_FACTOR;
