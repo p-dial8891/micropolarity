@@ -37,7 +37,7 @@ using namespace std;
 
 static dma_channel_config dma_config;
 static int dma_channel = 33;
-static int sem = 0;
+static volatile int sem = 0;
 
 void write_cmd(uint8_t cmd) {
     DC_CMD(); CS_LOW();
@@ -170,8 +170,12 @@ void my_disp_flush(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map) {
     dma_channel_configure(dma_channel, &dma_config, &spi1_hw->dr, tx_buf, 
         dma_encode_transfer_count(total_pixels_lim * sizeof(lv_color16_t)), 
         true);
-    dma_channel_wait_for_finish_blocking(dma_channel);
-
+    //dma_channel_wait_for_finish_blocking(dma_channel);
+    while ( sem == 0 ) {
+        sleep_ms(TICK_PERIOD);
+    }
+    /* Release semaphore */
+    sem = 0;
     CS_HIGH();
     lv_display_flush_ready(disp);
 }
@@ -191,16 +195,16 @@ static inline void dma_channel_set_irq2_enabled(uint channel, bool enabled) {
         hw_clear_bits(&dma_hw->inte2, 1u << channel);
 }
 
-// void display_dma_handler(void) {
-//     // Is this channel requesting interrupt?
-//     io_rw_32 * dma_hw_ints_p = &dma_hw->ints2;
-//     if ((*dma_hw_ints_p & (1 << dma_channel))) {
-//         *dma_hw_ints_p = 1 << dma_channel;  // Clear it.
+void display_dma_handler(void) {
+    // Is this channel requesting interrupt?
+    io_rw_32 * dma_hw_ints_p = &dma_hw->ints2;
+    if ((*dma_hw_ints_p & (1 << dma_channel))) {
+        *dma_hw_ints_p = 1 << dma_channel;  // Clear it.
 
-//         /* Take semaphore */
-//         sem = 1;
-//     }
-// }
+        /* Take semaphore */
+        sem = 1;
+    }
+}
 
 #if 1
 void display_init() {
@@ -210,12 +214,12 @@ void display_init() {
     /* Set up DMA handler */
     cout<<"Requesting dma channel."<<endl;
     dma_channel = dma_claim_unused_channel(true);
-    //irq_add_shared_handler(DMA_IRQ_2,display_dma_handler,PICO_SHARED_IRQ_HANDLER_DEFAULT_ORDER_PRIORITY);
+    irq_add_shared_handler(DMA_IRQ_2,display_dma_handler,PICO_SHARED_IRQ_HANDLER_DEFAULT_ORDER_PRIORITY);
     dma_config = dma_channel_get_default_config(dma_channel);
     channel_config_set_dreq(&dma_config, DREQ_SPI1_TX);
     channel_config_set_transfer_data_size(&dma_config, DMA_SIZE_8);
-    //dma_channel_set_irq2_enabled(dma_channel, true);
-    //irq_set_enabled(DMA_IRQ_2, true);
+    dma_channel_set_irq2_enabled(dma_channel, true);
+    irq_set_enabled(DMA_IRQ_2, true);
 
     // Allocate 1/10th buffer sizing
     static uint8_t buf[(SCREEN_WIDTH * SCREEN_HEIGHT) / 10 * BYTES_PER_PIXEL];
