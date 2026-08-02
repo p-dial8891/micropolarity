@@ -48,6 +48,7 @@ extern size_t ring_buffer_push_string(const uint8_t* source, size_t length);
 
 #define MAX_FN_LENGTH 256
 #define TICK_PERIOD (10)
+#define TICK_FACTOR (50)
 
 /* SDIO Interface */
 static sd_sdio_if_t sdio_if = {
@@ -196,6 +197,8 @@ int main() {
     size_t written = 0;
     uint32_t last_state = 0xFFFFFFFF;
     bool last_pin_val = true;
+    lv_obj_t * label = NULL;
+    uint32_t tick_counter = TICK_FACTOR;
 
     extern uint32_t SystemCoreClock;
     printf("System core clock is %d\n", SystemCoreClock);
@@ -212,7 +215,7 @@ int main() {
         if ( pin_val != last_pin_val ) {
             printf("Key pressed/depressed: %d\n", pin_val);
             last_pin_val = pin_val;
-            lv_example_get_started_1();
+            label = display_create_file_label();
         }
 
         uint32_t current_state = *HANDSHAKE_ADDR;
@@ -333,10 +336,18 @@ int main() {
                 f_sync(&debug_fil);
                 panic("FIFO send blocked.");
             }
+            if ( label != NULL ) {
+                lv_label_set_text(label, filename);
+            }
             file_open = true;
         }
 #if 1
-        display_tick(TICK_PERIOD);
+        if ( tick_counter <= 0 ) {
+            tick_counter = TICK_FACTOR;
+            display_tick(TICK_PERIOD * TICK_FACTOR);
+        } else {
+            tick_counter--;
+        }
 #endif
         sleep_ms(TICK_PERIOD);
     }

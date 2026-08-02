@@ -93,7 +93,7 @@ void ili9488_init() {
     write_data(0x0F);
 
     write_cmd(0x36); // Memory Access Control
-    write_data(0x40);          // MX, RGB
+    write_data(0x00 | (1<<5) | (1<<6) | (1<<7));          // MV, MX, MY, RGB
 
     write_cmd(0x3A); write_data(0x55); // Interface Pixel Format: 16-bit/pixel
 
@@ -125,32 +125,15 @@ void my_disp_flush(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map) {
     CS_LOW();
 
     lv_color16_t *colors = (lv_color16_t *)px_map;
-    //uint8_t rgb888_buf[3];
     uint8_t rgb565_buf[2];
-    //uint32_t rgb666_buf;
-    //uint8_t rgb666_u8buf[4];
-    //uint8_t pxl_buf[3];
 
     //Stream 16-bit pixels straight into the SPI FIFO
     for (uint32_t i = 0; i < total_pixels; i++) {
-        // rgb888_buf[0] = (colors->red * 255) / 31;
-        // rgb888_buf[1] = (colors->green * 255) / 63;
-        // rgb888_buf[2] = (colors->blue * 255) / 31;
         rgb565_buf[0] = ((*(uint16_t*)colors) >> 8) & 0xFF;
         rgb565_buf[1] = ((*(uint16_t*)colors) & 0xFF);
         spi_write_blocking(SPI_PORT, rgb565_buf, 2);
-//        spi_write_blocking(SPI_PORT, rgb888_buf, 3);
         colors++;
     }
-
-    // for (uint32_t i = 0; i < total_pixels; i++) {
-
-    //     pxl_buf[0] = ( (colors->red * 63) / 31 )   << 2;
-    //     pxl_buf[1] = colors->green                 << 2;
-    //     pxl_buf[2] = ( (colors->blue * 63) / 31 )  << 2;
-    //     spi_write_blocking(SPI_PORT, pxl_buf, 3);
-    //     colors++;
-    // }
 
     CS_HIGH();
     lv_display_flush_ready(disp);
@@ -167,7 +150,7 @@ void display_init() {
     lv_display_t *disp = lv_display_create(SCREEN_WIDTH, SCREEN_HEIGHT);
     lv_display_set_default(disp);
     lv_display_set_resolution(disp, 480, 320);
-    lv_display_set_rotation(disp, LV_DISPLAY_ROTATION_90);
+    lv_display_set_rotation(disp, LV_DISPLAY_ROTATION_0);
     lv_display_set_buffers(disp, buf, NULL, sizeof(buf), LV_DISPLAY_RENDER_MODE_PARTIAL);
     lv_display_set_flush_cb(disp, my_disp_flush);
 
@@ -180,6 +163,26 @@ void display_tick(const uint32_t tick_period) {
 }
 
 #endif
+
+lv_obj_t* display_create_file_label()
+{
+    /*Change the active screen's background color*/
+    lv_obj_set_style_bg_color(lv_screen_active(), lv_color_hex(0x003a57), LV_PART_MAIN);
+
+    /* Create a style */
+    static lv_style_t style;
+    lv_style_init(&style);
+    lv_style_set_text_font(&style, &lv_font_montserrat_28);  /* Set a larger font */
+    /*Create a white label, set its text and align it to the center*/
+    lv_obj_t * label = lv_label_create(lv_screen_active());
+    lv_label_set_text(label, "");
+    lv_obj_set_style_text_color(lv_screen_active(), lv_color_hex(0xffffff), LV_PART_MAIN);
+    lv_obj_set_size(label, 300, 200);
+    lv_obj_align(label, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_add_style(label, &style, 0);
+    lv_label_set_long_mode(label, LV_LABEL_LONG_MODE_WRAP);
+    return label;
+}
 
 #ifdef __cplusplus
 }
