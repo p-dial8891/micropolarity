@@ -63,10 +63,10 @@ static sd_sdio_if_t sdio_if = {
         D2_gpio = D0_gpio + 2;
         D3_gpio = D0_gpio + 3;
     */
-    .DMA_IRQ_num = DMA_IRQ_1,
-    .SDIO_PIO = pio2,
     .CMD_gpio = 18,
     .D0_gpio = 19,
+    .SDIO_PIO = pio2,
+    .DMA_IRQ_num = DMA_IRQ_1,
     .baud_rate = 125 * 1000 * 1000 / 6  // 20833333 Hz
 };
 
@@ -115,6 +115,8 @@ sd_timeouts_t sd_timeouts = {
     .sd_sdio_stopTransmission = 200, // Timeout in ms for response
 };
 
+
+#if 0
 #define SIO_BASE            0xd0000000
 #define SIO_CORE1_MPU_BASE  ((volatile uint32_t*)(SIO_BASE + 0x2b0))
 #define SIO_CORE1_MPU_CTRL  ((volatile uint32_t*)(SIO_BASE + 0x2bc))
@@ -133,6 +135,7 @@ void direct_boot_core1(uint32_t entry_addr, uint32_t stack_ptr, uint32_t vtor) {
     // Fire a Send-Event instruction to wake Core 1 up out of its low-power sleep
     __asm volatile("sev");
 }
+#endif
 
 /**
  * @brief The main function of the program.
@@ -269,14 +272,14 @@ int main() {
         }
         size_t rxlen = RING_BUFFER_SIZE;
         uint32_t error;
-        error = MID_NO_ERROR;
+        error = MidErrorCode::NO_ERROR;
         MessageId mid = receive_message(rxdata, &rxlen, &error);
-        if (error == MID_FIFO_BLOCKED) {
+        if (error == MidErrorCode::FIFO_BLOCKED) {
             f_printf(&debug_fil, "[Core 0]: ERROR! Receive FIFO blocked.");
             f_sync(&debug_fil);
             panic("FIFO receive blocked.");
         } else 
-        if ( mid == MID_GET_AUDIO ) {
+        if ( mid == MessageId::GET_AUDIO ) {
             //printf("Request received.\n");
             fr = f_read(&fil,&txdata[len],((RING_BUFFER_SIZE-1)-(UINT)len),(UINT*)&read);
             if (FR_OK != fr) {
@@ -287,7 +290,7 @@ int main() {
             if ( len != 0 ) {
                 uint32_t msg[2] = {1,1};
                 //size_t written = ring_buffer_push_string(&txdata[0], len);
-                size_t written = send_message(MID_GET_AUDIO, &txdata[0], len, &error);
+                size_t written = send_message(MessageId::GET_AUDIO, &txdata[0], len, &error);
                 memmove((void*)&txdata[0], (const void*)&txdata[written], len - written);
                 len -= written;
                 total_written += written;
@@ -298,15 +301,15 @@ int main() {
                 printf("Total bytes read : %d\n", total_read);
                 printf("Total bytes written : %d\n", total_written);
                 printf("Length in buffer : %d\n", len);
-                (void)send_message(MID_GET_AUDIO, &msg[0], 0, &error);
-                if (error == MID_FIFO_BLOCKED) {
+                (void)send_message(MessageId::GET_AUDIO, &msg[0], 0, &error);
+                if (error == MidErrorCode::FIFO_BLOCKED) {
                     f_printf(&debug_fil, "[Core 0]: ERROR! Send fifo blocked.");
                     f_sync(&debug_fil);
                     panic("FIFO send blocked.");
                 }
             }
         } else
-        if ( mid == MID_PLAY_FILE ) {
+        if ( mid == MessageId::PLAY_FILE ) {
             uint8_t msg[2] = {0,0};
             printf("Play file request received.\n");
             if (file_open) {
@@ -330,8 +333,8 @@ int main() {
                 continue;
             }
             printf("File open return code : %d\n", fr);
-            (void)send_message(MID_PLAY_FILE, &msg[0], 0, &error);
-            if (error == MID_FIFO_BLOCKED) {
+            (void)send_message(MessageId::PLAY_FILE, &msg[0], 0, &error);
+            if (error == MidErrorCode::FIFO_BLOCKED) {
                 f_printf(&debug_fil, "[Core 0]: ERROR! Send fifo blocked.");
                 f_sync(&debug_fil);
                 panic("FIFO send blocked.");
@@ -340,7 +343,7 @@ int main() {
                 lv_label_set_text(label, filename);
             }
             file_open = true;
-        }
+        } else
 #if 1
         if ( tick_counter <= 0 ) {
             tick_counter = TICK_FACTOR;
