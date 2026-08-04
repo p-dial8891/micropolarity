@@ -33,7 +33,7 @@ add_subdirectory(../lvgl lvgl)
 include_directories(../)
 
 # Add executable. Default name is the project name, version 0.1
-add_executable(core0 main.cpp ring_buffer.cpp messaging.cpp display.cpp)
+add_executable(core0 main.cpp ring_buffer.cpp messaging.cpp display.cpp runtime.cpp)
 
 # Can leave these off for silent mode:
 # add_compile_definitions(USE_PRINTF USE_DBG_PRINTF)

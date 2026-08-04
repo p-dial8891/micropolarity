@@ -25,6 +25,7 @@ specific language governing permissions and limitations under the License.
 #include "ring_buffer.h"
 #include "messaging.h"
 #include "display.h"
+#include "runtime.hpp"
 #include "lvgl.h"
 #include "lvgl/examples/lv_examples.h"
 /*
@@ -48,7 +49,7 @@ extern size_t ring_buffer_push_string(const uint8_t* source, size_t length);
 #define RUST_RAM_END        (0x20010000 + (448 * 1024)) // 0x20080000
 
 #define MAX_FN_LENGTH 256
-#define TICK_FACTOR   (25)
+#define TICK_FACTOR   (10)
 
 /* SDIO Interface */
 static sd_sdio_if_t sdio_if = {
@@ -114,7 +115,6 @@ sd_timeouts_t sd_timeouts = {
     .sd_sdio_begin = 1000, // Timeout in ms for response
     .sd_sdio_stopTransmission = 200, // Timeout in ms for response
 };
-
 
 #if 0
 #define SIO_BASE            0xd0000000
@@ -187,10 +187,10 @@ int main() {
     gpio_pull_up(2);
     gpio_set_dir(2, GPIO_IN);
 
-    static uint8_t rxdata[RING_BUFFER_SIZE];
-    static uint8_t txdata[RING_BUFFER_SIZE];
     static FIL fil;
     static FIL debug_fil;
+    static uint8_t rxdata[RING_BUFFER_SIZE];
+    static uint8_t txdata[RING_BUFFER_SIZE];
     char filename[MAX_FN_LENGTH] = {};
     bool file_open = false;
     size_t total_read = 0;
@@ -198,6 +198,7 @@ int main() {
     size_t len = 0;
     size_t read = 0;
     size_t written = 0;
+    size_t rxlen = RING_BUFFER_SIZE;
     uint32_t last_state = 0xFFFFFFFF;
     bool last_pin_val = true;
     lv_obj_t * label = NULL;
@@ -205,6 +206,89 @@ int main() {
 
     extern uint32_t SystemCoreClock;
     printf("System core clock is %d\n", SystemCoreClock);
+
+    runtime.routine = {
+        [&]() {
+            bool ret = true;
+            uint32_t error;
+            error = MidErrorCode::NO_ERROR;
+            MessageId mid = receive_message(rxdata, &rxlen, &error);
+            if (error == MidErrorCode::FIFO_BLOCKED) {
+                f_printf(&debug_fil, "[Core 0]: ERROR! Receive FIFO blocked.");
+                f_sync(&debug_fil);
+                panic("FIFO receive blocked.");
+            } else 
+            if ( mid == MessageId::GET_AUDIO ) {
+                //printf("Request received.\n");
+                fr = f_read(&fil,&txdata[len],((RING_BUFFER_SIZE-1)-(UINT)len),(UINT*)&read);
+                if (FR_OK != fr) {
+                    printf("f_read error: %s (%d)\n", FRESULT_str(fr), fr);
+                }
+                len += read;
+                total_read += read;
+                if ( len != 0 ) {
+                    uint32_t msg[2] = {1,1};
+                    //size_t written = ring_buffer_push_string(&txdata[0], len);
+                    size_t written = send_message(MessageId::GET_AUDIO, &txdata[0], len, &error);
+                    memmove((void*)&txdata[0], (const void*)&txdata[written], len - written);
+                    len -= written;
+                    total_written += written;
+                    // send_string(msg);
+                }
+                else {
+                    uint8_t msg[2] = {0,0};
+                    printf("Total bytes read : %d\n", total_read);
+                    printf("Total bytes written : %d\n", total_written);
+                    printf("Length in buffer : %d\n", len);
+                    (void)send_message(MessageId::GET_AUDIO, &msg[0], 0, &error);
+                    if (error == MidErrorCode::FIFO_BLOCKED) {
+                        f_printf(&debug_fil, "[Core 0]: ERROR! Send fifo blocked.");
+                        f_sync(&debug_fil);
+                        panic("FIFO send blocked.");
+                    }
+                }
+            } else
+            if ( mid == MessageId::PLAY_FILE ) {
+                uint8_t msg[2] = {0,0};
+                printf("Play file request received.\n");
+                if (file_open) {
+                    fr = f_close(&fil);
+                    if (FR_OK != fr) {
+                        printf("f_close error: %s (%d)\n", FRESULT_str(fr), fr);
+                    } else {
+                        printf("File closed.\n");
+                    }
+                    file_open = false;
+                }
+                memset(filename,0,MAX_FN_LENGTH);
+                printf("Received length is %d\n", rxlen);
+                memcpy(filename, rxdata, rxlen);
+                printf("Opening file : %s\n", filename);
+                fr = f_open(&fil, filename, FA_READ );
+                if (FR_OK != fr && FR_EXIST != fr) {
+                    f_printf(&debug_fil, "[Core 0]: Could not open file - %s", filename);
+                    f_sync(&debug_fil);
+                    panic("f_open(%s) error: %s (%d)\n", filename, FRESULT_str(fr), fr);
+                    // continue;
+                }
+                printf("File open return code : %d\n", fr);
+                (void)send_message(MessageId::PLAY_FILE, &msg[0], 0, &error);
+                if (error == MidErrorCode::FIFO_BLOCKED) {
+                    f_printf(&debug_fil, "[Core 0]: ERROR! Send fifo blocked.");
+                    f_sync(&debug_fil);
+                    panic("FIFO send blocked.");
+                }
+                if ( label != NULL ) {
+                    lv_label_set_text(label, filename);
+                }
+                file_open = true;
+            } else {
+                ret = false;
+            }
+
+            return ret;
+        }
+    };
 
     fr = f_open(&debug_fil, "debug.log", FA_WRITE | FA_CREATE_ALWAYS);
     if (FR_OK != fr && FR_EXIST != fr) {
@@ -270,89 +354,20 @@ int main() {
                     break;
             }
         }
-        size_t rxlen = RING_BUFFER_SIZE;
-        uint32_t error;
-        error = MidErrorCode::NO_ERROR;
-        MessageId mid = receive_message(rxdata, &rxlen, &error);
-        if (error == MidErrorCode::FIFO_BLOCKED) {
-            f_printf(&debug_fil, "[Core 0]: ERROR! Receive FIFO blocked.");
-            f_sync(&debug_fil);
-            panic("FIFO receive blocked.");
-        } else 
-        if ( mid == MessageId::GET_AUDIO ) {
-            //printf("Request received.\n");
-            fr = f_read(&fil,&txdata[len],((RING_BUFFER_SIZE-1)-(UINT)len),(UINT*)&read);
-            if (FR_OK != fr) {
-                printf("f_read error: %s (%d)\n", FRESULT_str(fr), fr);
-            }
-            len += read;
-            total_read += read;
-            if ( len != 0 ) {
-                uint32_t msg[2] = {1,1};
-                //size_t written = ring_buffer_push_string(&txdata[0], len);
-                size_t written = send_message(MessageId::GET_AUDIO, &txdata[0], len, &error);
-                memmove((void*)&txdata[0], (const void*)&txdata[written], len - written);
-                len -= written;
-                total_written += written;
-                // send_string(msg);
-            }
-            else {
-                uint8_t msg[2] = {0,0};
-                printf("Total bytes read : %d\n", total_read);
-                printf("Total bytes written : %d\n", total_written);
-                printf("Length in buffer : %d\n", len);
-                (void)send_message(MessageId::GET_AUDIO, &msg[0], 0, &error);
-                if (error == MidErrorCode::FIFO_BLOCKED) {
-                    f_printf(&debug_fil, "[Core 0]: ERROR! Send fifo blocked.");
-                    f_sync(&debug_fil);
-                    panic("FIFO send blocked.");
-                }
-            }
-        } else
-        if ( mid == MessageId::PLAY_FILE ) {
-            uint8_t msg[2] = {0,0};
-            printf("Play file request received.\n");
-            if (file_open) {
-                fr = f_close(&fil);
-                if (FR_OK != fr) {
-                    printf("f_close error: %s (%d)\n", FRESULT_str(fr), fr);
-                } else {
-                    printf("File closed.\n");
-                }
-                file_open = false;
-            }
-            memset(filename,0,MAX_FN_LENGTH);
-            printf("Received length is %d\n", rxlen);
-            memcpy(filename, rxdata, rxlen);
-            printf("Opening file : %s\n", filename);
-            fr = f_open(&fil, filename, FA_READ );
-            if (FR_OK != fr && FR_EXIST != fr) {
-                f_printf(&debug_fil, "[Core 0]: Could not open file - %s", filename);
-                f_sync(&debug_fil);
-                panic("f_open(%s) error: %s (%d)\n", filename, FRESULT_str(fr), fr);
-                continue;
-            }
-            printf("File open return code : %d\n", fr);
-            (void)send_message(MessageId::PLAY_FILE, &msg[0], 0, &error);
-            if (error == MidErrorCode::FIFO_BLOCKED) {
-                f_printf(&debug_fil, "[Core 0]: ERROR! Send fifo blocked.");
-                f_sync(&debug_fil);
-                panic("FIFO send blocked.");
-            }
-            if ( label != NULL ) {
-                lv_label_set_text(label, filename);
-            }
-            file_open = true;
-        } else
+
+        if (!runtime.routine()) {
 #if 1
-        if ( tick_counter <= 0 ) {
-            tick_counter = TICK_FACTOR;
-            display_tick(TICK_PERIOD * TICK_FACTOR);
-        } else {
-            tick_counter--;
-        }
+            if ( tick_counter <= 0 ) {
+                tick_counter = TICK_FACTOR;
+                display_tick(TICK_PERIOD * TICK_FACTOR);
+            } else {
+                tick_counter--;
+                sleep_ms(TICK_PERIOD);
+            }
 #endif
-        sleep_ms(TICK_PERIOD);
+        } else {
+            sleep_ms(TICK_PERIOD);
+        }
     }
 
     f_unmount("");

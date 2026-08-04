@@ -3,7 +3,7 @@
 #include <algorithm>
 #include "pico/stdlib.h"
 #include "hardware/spi.h"
-
+#include "runtime.hpp"
 #if 1
 #include "lvgl/lvgl.h"
 #include "lvgl/examples/lv_examples.h"
@@ -173,6 +173,7 @@ void my_disp_flush(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map) {
     //dma_channel_wait_for_finish_blocking(dma_channel);
     while ( sem == 0 ) {
         sleep_ms(TICK_PERIOD);
+        runtime.routine();
     }
     /* Release semaphore */
     sem = 0;
