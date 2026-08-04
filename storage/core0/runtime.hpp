@@ -1,5 +1,13 @@
+#pragma once
+
+#include <functional>
 #include <string.h>
 #include <algorithm>
+#include "main.h"
+
+struct Runtime {
+    std::function<bool(void)> routine;
+};
 
 template <typename T, size_t N>
 struct Port {
@@ -51,3 +59,6 @@ struct Port {
     }
     
 };
+
+extern struct Runtime runtime;
+extern Port<char [], MAX_FN_LENGTH> ui_track_name;

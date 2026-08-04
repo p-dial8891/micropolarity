@@ -167,6 +167,8 @@ void my_disp_flush(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map) {
     //     dma_channel_wait_for_finish_blocking(dma_channel);
     // }
 
+    /* Acquire semaphore */
+    sem = 0;
     dma_channel_configure(dma_channel, &dma_config, &spi1_hw->dr, tx_buf, 
         dma_encode_transfer_count(total_pixels_lim * sizeof(lv_color16_t)), 
         true);
@@ -175,8 +177,7 @@ void my_disp_flush(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map) {
         sleep_ms(TICK_PERIOD);
         runtime.routine();
     }
-    /* Release semaphore */
-    sem = 0;
+
     CS_HIGH();
     lv_display_flush_ready(disp);
 }
@@ -202,7 +203,7 @@ void display_dma_handler(void) {
     if ((*dma_hw_ints_p & (1 << dma_channel))) {
         *dma_hw_ints_p = 1 << dma_channel;  // Clear it.
 
-        /* Take semaphore */
+        /* Release semaphore */
         sem = 1;
     }
 }

@@ -136,6 +136,7 @@ void direct_boot_core1(uint32_t entry_addr, uint32_t stack_ptr, uint32_t vtor) {
     __asm volatile("sev");
 }
 #endif
+static char filename[MAX_FN_LENGTH] = {};
 
 /**
  * @brief The main function of the program.
@@ -191,7 +192,6 @@ int main() {
     static FIL debug_fil;
     static uint8_t rxdata[RING_BUFFER_SIZE];
     static uint8_t txdata[RING_BUFFER_SIZE];
-    char filename[MAX_FN_LENGTH] = {};
     bool file_open = false;
     size_t total_read = 0;
     size_t total_written = 0;
@@ -278,9 +278,7 @@ int main() {
                     f_sync(&debug_fil);
                     panic("FIFO send blocked.");
                 }
-                if ( label != NULL ) {
-                    lv_label_set_text(label, filename);
-                }
+                (void)ui_track_name.push_deref(filename, MAX_FN_LENGTH);
                 file_open = true;
             } else {
                 ret = false;
@@ -359,6 +357,12 @@ int main() {
 #if 1
             if ( tick_counter <= 0 ) {
                 tick_counter = TICK_FACTOR;
+
+                if ( ui_track_name.pop_deref(filename, MAX_FN_LENGTH) ) {
+                    if ( label != NULL ) {
+                        lv_label_set_text(label, filename);
+                    }
+                }
                 display_tick(TICK_PERIOD * TICK_FACTOR);
             } else {
                 tick_counter--;
