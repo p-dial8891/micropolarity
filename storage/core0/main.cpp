@@ -198,7 +198,6 @@ int main() {
     size_t len = 0;
     size_t read = 0;
     size_t written = 0;
-    size_t rxlen = RING_BUFFER_SIZE;
     uint32_t last_state = 0xFFFFFFFF;
     bool last_pin_val = true;
     lv_obj_t * label = NULL;
@@ -212,6 +211,8 @@ int main() {
             bool ret = true;
             uint32_t error;
             error = MidErrorCode::NO_ERROR;
+            size_t rxlen;
+            rxlen = RING_BUFFER_SIZE;
             MessageId mid = receive_message(rxdata, &rxlen, &error);
             if (error == MidErrorCode::FIFO_BLOCKED) {
                 f_printf(&debug_fil, "[Core 0]: ERROR! Receive FIFO blocked.");
