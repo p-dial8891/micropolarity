@@ -11,6 +11,9 @@
 		},
 		{
 			"path": "../lvgl"
+		},
+		{
+			"path": "../../Pico-Eval-Board-Code"
 		}
 	],
 	"settings": {

@@ -22,9 +22,11 @@ specific language governing permissions and limitations under the License.
 #include "ff.h"
 #include "hw_config.h"
 #include "pico/multicore.h"
+#include "board/spi.hpp"
 #include "ring_buffer.h"
 #include "messaging.h"
 #include "display.h"
+#include "touch.hpp"
 #include "runtime.hpp"
 #include "lvgl.h"
 #include "lvgl/examples/lv_examples.h"
@@ -182,6 +184,9 @@ int main() {
     //direct_boot_core1(rust_entry_address, rust_stack_pointer, RUST_FLASH_ORIGIN);
     sleep_ms(1000);
 
+    spi::spi_init();
+    spi::dma_init();
+    touch_init();
     display_init();
     ring_buffer_init();
     gpio_init(2);
@@ -201,7 +206,8 @@ int main() {
     uint32_t last_state = 0xFFFFFFFF;
     bool last_pin_val = true;
     lv_obj_t * label = NULL;
-    uint32_t tick_counter = TICK_FACTOR;
+    uint32_t display_tick_counter = TICK_FACTOR;
+    uint32_t touch_tick_counter = TICK_FACTOR*20;
 
     extern uint32_t SystemCoreClock;
     printf("System core clock is %d\n", SystemCoreClock);
@@ -356,8 +362,8 @@ int main() {
 
         if (!runtime.routine()) {
 #if 1
-            if ( tick_counter <= 0 ) {
-                tick_counter = TICK_FACTOR;
+            if ( display_tick_counter <= 0 ) {
+                display_tick_counter = TICK_FACTOR;
 
                 if ( ui_track_name.pop_deref(filename, MAX_FN_LENGTH) ) {
                     if ( label != NULL ) {
@@ -366,7 +372,22 @@ int main() {
                 }
                 display_tick(TICK_PERIOD * TICK_FACTOR);
             } else {
-                tick_counter--;
+                display_tick_counter--;
+
+                if ( touch_tick_counter <= 0 ) {
+                    touch_tick_counter = TICK_FACTOR*20;
+                    // if ( !gpio_get(TOUCH_PIN_IRQ) ) {
+                        uint32_t total = 0;
+                        for(int i = 0; i < 9; i++) {
+                            total += touch_get_x_pos();
+                            sleep_us(200);
+                        }
+                        printf("Touch X position : %d\n", total/9);
+                    // }
+                } else {
+                    touch_tick_counter--;
+                }
+
                 sleep_ms(TICK_PERIOD);
             }
 #endif

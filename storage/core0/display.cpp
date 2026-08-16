@@ -1,9 +1,9 @@
 #include <string.h>
 #include <iostream>
-#include <algorithm>
 #include "pico/stdlib.h"
 #include "hardware/spi.h"
 #include "runtime.hpp"
+#include "board/spi.hpp"
 #if 1
 #include "lvgl/lvgl.h"
 #include "lvgl/examples/lv_examples.h"
@@ -16,7 +16,6 @@
 #define PIN_MISO     12
 #define PIN_MOSI     11
 #define PIN_SCK      10
-#define PIN_CS       9
 #define PIN_DC       8
 #define PIN_RST      15
 
@@ -26,8 +25,8 @@
 // Fast control macros
 #define DC_CMD()   gpio_put(PIN_DC, 0)
 #define DC_DATA()  gpio_put(PIN_DC, 1)
-#define CS_LOW()   gpio_put(PIN_CS, 0)
-#define CS_HIGH()  gpio_put(PIN_CS, 1)
+// #define CS_LOW()   gpio_put(PIN_CS, 0)
+// #define CS_HIGH()  gpio_put(PIN_CS, 1)
 
 #ifdef __cplusplus
 extern "C" {
@@ -35,30 +34,24 @@ extern "C" {
 
 using namespace std;
 
-static dma_channel_config dma_config;
-static int dma_channel = 33;
-static volatile int sem = 0;
 
 void write_cmd(uint8_t cmd) {
-    DC_CMD(); CS_LOW();
+    DC_CMD(); spi::display_cs(spi::LOW);
     spi_write_blocking(SPI_PORT, &cmd, 1);
-    CS_HIGH();
+    spi::display_cs(spi::HIGH);
 }
 
 void write_data(uint8_t data) {
-    DC_DATA(); CS_LOW();
+    DC_DATA(); spi::display_cs(spi::LOW);
     spi_write_blocking(SPI_PORT, &data, 1);
-    CS_HIGH();
+    spi::display_cs(spi::HIGH);
 }
 
 void ili9488_init() {
-    // Initialise SPI at 30MHz (Safe ceiling for ILI9488 over standard wire)
-    spi_init(SPI_PORT, 30 * 1000 * 1000);
     gpio_set_function(PIN_MISO, GPIO_FUNC_SPI);
     gpio_set_function(PIN_MOSI, GPIO_FUNC_SPI);
     gpio_set_function(PIN_SCK, GPIO_FUNC_SPI);
     
-    gpio_init(PIN_CS);  gpio_set_dir(PIN_CS, GPIO_OUT);
     gpio_init(PIN_DC);  gpio_set_dir(PIN_DC, GPIO_OUT);
     gpio_init(PIN_RST); gpio_set_dir(PIN_RST, GPIO_OUT);
 
@@ -68,6 +61,9 @@ void ili9488_init() {
 
     write_cmd(0x11); // Sleep Out
     sleep_ms(120);
+
+    write_cmd(0xB0);  // Interface control register
+    write_data(0x80); // SDA_EN = 1 , SDO is not used
 
     write_cmd(0xE0); // Positive Gamma Control
     write_data(0x00);
@@ -135,7 +131,7 @@ void my_disp_flush(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map) {
     ili9488_set_window(area->x1, area->y1, area->x2, area->y2);
 
     DC_DATA();
-    CS_LOW();
+    spi::display_cs(spi::LOW);
 
     lv_color16_t *colors = (lv_color16_t *)px_map;
     //uint8_t rgb565_buf[2];
@@ -152,6 +148,7 @@ void my_disp_flush(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map) {
             tx_buf[(u*2)+1] = ((*(uint16_t*)colors) & 0xFF);
             colors++;
         }
+#if 0
     //     //memcpy(tx_buf, colors, (SCREEN_WIDTH * NUM_TX_ROW * sizeof(lv_color16_t)));
     //     // rgb565_buf[0] = ((*(uint16_t*)colors) >> 8) & 0xFF;
     //     // rgb565_buf[1] = ((*(uint16_t*)colors) & 0xFF);
@@ -166,46 +163,13 @@ void my_disp_flush(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map) {
     //     // sem = 0;
     //     dma_channel_wait_for_finish_blocking(dma_channel);
     // }
-
-    /* Acquire semaphore */
-    sem = 0;
-    dma_channel_configure(dma_channel, &dma_config, &spi1_hw->dr, tx_buf, 
-        dma_encode_transfer_count(total_pixels_lim * sizeof(lv_color16_t)), 
-        true);
+#endif
+    spi::dma_tx_start(tx_buf, total_pixels_lim * sizeof(lv_color16_t));
     //dma_channel_wait_for_finish_blocking(dma_channel);
-    while ( sem == 0 ) {
-        sleep_ms(TICK_PERIOD);
-        runtime.routine();
-    }
+    spi::wait_for_completion(DISP_PID);
 
-    CS_HIGH();
+    spi::display_cs(spi::HIGH);
     lv_display_flush_ready(disp);
-}
-
-/*! \brief  Enable single DMA channel's interrupt via DMA_IRQ_2
- *  \ingroup hardware_dma
- *
- * \param channel DMA channel
- * \param enabled true to enable interrupt 2 on specified channel, false to disable.
- */
-static inline void dma_channel_set_irq2_enabled(uint channel, bool enabled) {
-    check_dma_channel_param(channel);
-    check_hw_layout(dma_hw_t, inte2, DMA_INTE2_OFFSET);
-    if (enabled)
-        hw_set_bits(&dma_hw->inte2, 1u << channel);
-    else
-        hw_clear_bits(&dma_hw->inte2, 1u << channel);
-}
-
-void display_dma_handler(void) {
-    // Is this channel requesting interrupt?
-    io_rw_32 * dma_hw_ints_p = &dma_hw->ints2;
-    if ((*dma_hw_ints_p & (1 << dma_channel))) {
-        *dma_hw_ints_p = 1 << dma_channel;  // Clear it.
-
-        /* Release semaphore */
-        sem = 1;
-    }
 }
 
 #if 1
@@ -213,15 +177,6 @@ void display_init() {
     lv_init();
     ili9488_init();
 
-    /* Set up DMA handler */
-    cout<<"Requesting dma channel."<<endl;
-    dma_channel = dma_claim_unused_channel(true);
-    irq_add_shared_handler(DMA_IRQ_2,display_dma_handler,PICO_SHARED_IRQ_HANDLER_DEFAULT_ORDER_PRIORITY);
-    dma_config = dma_channel_get_default_config(dma_channel);
-    channel_config_set_dreq(&dma_config, DREQ_SPI1_TX);
-    channel_config_set_transfer_data_size(&dma_config, DMA_SIZE_8);
-    dma_channel_set_irq2_enabled(dma_channel, true);
-    irq_set_enabled(DMA_IRQ_2, true);
 
     // Allocate 1/10th buffer sizing
     static uint8_t buf[(SCREEN_WIDTH * SCREEN_HEIGHT) / 10 * BYTES_PER_PIXEL];
