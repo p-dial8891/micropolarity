@@ -17,6 +17,7 @@ use embassy_net::{Stack, tcp::TcpSocket};
 const SAMPLE_RATE: u32 = 44100;
 const BIT_DEPTH: u32 = 16;
 const READ_SIZE: usize = 32768;
+const MAX_FN_LENGTH: usize = 256;
 
 struct FileReader {
     pub rb : Buffer
@@ -113,7 +114,7 @@ async fn select_next_track<'c>(
     tx_buffer : &'c mut [u8]
 ) -> Result<TcpSocket<'c>, ()>{
     
-    let mut buffer = [0u8; 100];
+    let mut buffer = [0u8; MAX_FN_LENGTH];
     let mut read = 0usize;
     let rb = Buffer::new();
     let mut socket = TcpSocket::new(stack, rx_buffer, tx_buffer);

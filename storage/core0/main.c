@@ -18,12 +18,19 @@ specific language governing permissions and limitations under the License.
 //
 #include "pico/stdlib.h"
 //
-#include "f_util.h"
-#include "ff.h"
-#include "hw_config.h"
+
 #include "pico/multicore.h"
 #include "ring_buffer.h"
 #include "messaging.h"
+
+#define ENABLE_DISK
+
+#ifdef ENABLE_DISK
+#include "hw_config.h"
+#include "f_util.h"
+#include "ff.h"
+#endif
+
 /*
 
 This file should be tailored to match the hardware design.
@@ -32,8 +39,6 @@ See
 https://github.com/carlk3/no-OS-FatFS-SD-SDIO-SPI-RPi-Pico/tree/main#customizing-for-the-hardware-configuration
 
 */
-
-#include "hw_config.h"
 
 extern void ring_buffer_init(void);
 extern size_t ring_buffer_push_string(const uint8_t* source, size_t length);
@@ -44,35 +49,34 @@ extern size_t ring_buffer_push_string(const uint8_t* source, size_t length);
 #define RUST_RAM_END        (0x20010000 + (448 * 1024)) // 0x20080000
 
 #define MAX_FN_LENGTH 256
+#ifdef ENABLE_DISK
 
-/* SDIO Interface */
-static sd_sdio_if_t sdio_if = {
-    /*
-    Pins CLK_gpio, D1_gpio, D2_gpio, and D3_gpio are at offsets from pin D0_gpio.
-    The offsets are determined by sd_driver\SDIO\rp2040_sdio.pio.
-        CLK_gpio = (D0_gpio + SDIO_CLK_PIN_D0_OFFSET) % 32;
-        As of this writing, SDIO_CLK_PIN_D0_OFFSET is 18,
-            which is -14 in mod32 arithmetic, so:
-        CLK_gpio = D0_gpio -14.
-        D1_gpio = D0_gpio + 1;
-        D2_gpio = D0_gpio + 2;
-        D3_gpio = D0_gpio + 3;
-    */
-    .DMA_IRQ_num = DMA_IRQ_1,
-    .SDIO_PIO = pio2,
-    .CMD_gpio = 18,
-    .D0_gpio = 19,
-    .baud_rate = 125 * 1000 * 1000 / 6  // 20833333 Hz
+/* Configuration of hardware SPI object */
+static spi_t spi = {
+    .hw_inst = spi1,  // SPI component
+    .sck_gpio = 30,    // GPIO number (not Pico pin number)
+    .mosi_gpio = 31,
+    .miso_gpio = 40,
+    //.baud_rate = 125 * 1000 * 1000 / 8  // 15625000 Hz
+    //.baud_rate = 125 * 1000 * 1000 / 6  // 20833333 Hz
+    .baud_rate = 125 * 1000 * 1000 / 4  // 31250000 Hz
+    //.baud_rate = 125 * 1000 * 1000 / 2  // 62500000 Hz
 };
 
-/* Hardware Configuration of the SD Card socket "object" */
-static sd_card_t sd_card = {.type = SD_IF_SDIO, .sdio_if_p = &sdio_if};
+/* SPI Interface */
+static sd_spi_if_t spi_if = {
+    .spi = &spi,  // Pointer to the SPI driving this card
+    .ss_gpio = 43  // The SPI slave select GPIO for this SD card
+};
 
-/**
- * @brief Get the number of SD cards.
- *
- * @return The number of SD cards, which is 1 in this case.
- */
+/* Configuration of the SD Card socket object */
+static sd_card_t sd_card = {
+    .type = SD_IF_SPI,
+    .spi_if_p = &spi_if  // Pointer to the SPI interface driving this card
+};
+
+/* ********************************************************************** */
+
 size_t sd_get_num() { return 1; }
 
 /**
@@ -82,7 +86,7 @@ size_t sd_get_num() { return 1; }
  *
  * @return A pointer to the SD card object, or @c NULL if the number is invalid.
  */
-sd_card_t* sd_get_by_num(size_t num) {
+sd_card_t *sd_get_by_num(size_t num) {
     if (0 == num) {
         // The number 0 is a valid SD card number.
         // Return a pointer to the sd_card object.
@@ -109,7 +113,7 @@ sd_timeouts_t sd_timeouts = {
     .sd_sdio_begin = 1000, // Timeout in ms for response
     .sd_sdio_stopTransmission = 200, // Timeout in ms for response
 };
-
+#endif
 #define SIO_BASE            0xd0000000
 #define SIO_CORE1_MPU_BASE  ((volatile uint32_t*)(SIO_BASE + 0x2b0))
 #define SIO_CORE1_MPU_CTRL  ((volatile uint32_t*)(SIO_BASE + 0x2bc))
@@ -138,17 +142,22 @@ void direct_boot_core1(uint32_t entry_addr, uint32_t stack_ptr, uint32_t vtor) {
  */
 int main() {
     stdio_init_all();
+    // if (pio_set_gpio_base(pio2, 16) ) {
+    //     printf("PIO GPIO Base set error.");
+    // }
+    // printf("Gpiobase is %d\n",pio2->gpiobase);
+    
+    // gpio_set_input_hysteresis_enabled(30, true);
+    // gpio_set_input_hysteresis_enabled(31, true);
+    // gpio_set_input_hysteresis_enabled(40, true);
+    // gpio_set_input_hysteresis_enabled(41, true);
+    // gpio_set_input_hysteresis_enabled(42, true);
+    // gpio_set_input_hysteresis_enabled(43, true);
+    
     sleep_ms(2000); // Wait for serial monitor to connect
 
     // See FatFs - Generic FAT Filesystem Module, "Application Interface",
     // http://elm-chan.org/fsw/ff/00index_e.html
-    static FATFS fs;
-    FRESULT fr = f_mount(&fs, "", 1);
-    if (FR_OK != fr) {
-        panic("f_mount error: %s (%d)\n", FRESULT_str(fr), fr);
-        return -1;
-    }
-
     printf("\n--- Starting Multicore Handshake Monitor ---\n");
 
     // 1. Force state to RESET
@@ -180,8 +189,17 @@ int main() {
 
     static uint8_t rxdata[RING_BUFFER_SIZE];
     static uint8_t txdata[RING_BUFFER_SIZE];
-    static FIL fil;
-    static FIL debug_fil;
+
+#ifdef ENABLE_DISK
+    static FATFS fs;
+    // FRESULT fr;
+    FRESULT fr = f_mount(&fs, "", 1);
+    if (FR_OK != fr) {
+        panic("f_mount error: %s (%d)\n", FRESULT_str(fr), fr);
+        return -1;
+    }
+#endif
+
     char filename[MAX_FN_LENGTH] = {};
     bool file_open = false;
     size_t total_read = 0;
@@ -191,14 +209,17 @@ int main() {
     size_t written = 0;
     uint32_t last_state = 0xFFFFFFFF;
 
+#ifdef ENABLE_DISK
     extern uint32_t SystemCoreClock;
     printf("System core clock is %d\n", SystemCoreClock);
-
+    
+    static FIL fil;
+    static FIL debug_fil;
     fr = f_open(&debug_fil, "debug.log", FA_WRITE | FA_CREATE_ALWAYS);
     if (FR_OK != fr && FR_EXIST != fr) {
         panic("f_open(%s) error: %s (%d)\n", "debug.log", FRESULT_str(fr), fr);
     }
-
+#endif
     while (1) {
         uint32_t current_state = *HANDSHAKE_ADDR;
 
@@ -226,18 +247,24 @@ int main() {
                     break;
                 case 0x22222222:
                     printf("[Core 1 Sync]: WARNING! Core 1 FIFO blocked.\n");
+#ifdef ENABLE_DISK
                     f_printf(&debug_fil, "[Core 1 Sync]: WARNING! Core 1 FIFO blocked.\n");
                     f_sync(&debug_fil);
+#endif
                     break;
                 case 0x5EC07111:
                     printf("[Core 1 Sync]: ERROR! Core 1 send message blocked.\n");
+#ifdef ENABLE_DISK
                     f_printf(&debug_fil, "[Core 1 Sync]: ERROR! Core 1 send message blocked.\n");
                     f_sync(&debug_fil);
+#endif
                     break;
                 case 0x6EC07111:
                     printf("[Core 1 Sync]: ERROR! Core 1 receive message blocked.\n");
+#ifdef ENABLE_DISK
                     f_printf(&debug_fil, "[Core 1 Sync]: ERROR! Core 1 receive message blocked.\n");
                     f_sync(&debug_fil);
+#endif
                     break;
                 // case 0x7EC07111:
                 //     printf("[Core 1 Sync]: SUCCESS! Core 1 detected key release.\n");
@@ -253,6 +280,7 @@ int main() {
         uint32_t error;
         error = MID_NO_ERROR;
         MessageId mid = receive_message(rxdata, &rxlen, &error);
+#ifdef ENABLE_DISK
         if (error == MID_FIFO_BLOCKED) {
             f_printf(&debug_fil, "[Core 0]: ERROR! Receive FIFO blocked.");
             f_sync(&debug_fil);
@@ -320,11 +348,12 @@ int main() {
             }
             file_open = true;
         }
+#endif
         sleep_ms(10);
     }
-
+#ifdef ENABLE_DISK
     f_unmount("");
-
+#endif
 }
 
 

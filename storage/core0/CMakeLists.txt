@@ -4,9 +4,9 @@ if(WIN32)
 else()
     set(USERHOME $ENV{HOME})
 endif()
-set(sdkVersion 2.2.0)
-set(toolchainVersion 13_2_Rel1)
-set(picotoolVersion 2.2.0-a4)
+set(sdkVersion 2.3.0)
+set(toolchainVersion 15_2_Rel1)
+set(picotoolVersion 2.3.0)
 set(picoVscode ${USERHOME}/.pico-sdk/cmake/pico-vscode.cmake)
 if (EXISTS ${picoVscode})
     include(${picoVscode})
@@ -16,7 +16,7 @@ endif()
 
 cmake_minimum_required(VERSION 3.5)
 
-set(PICO_BOARD pico2_w CACHE STRING "Board type")
+set(PICO_BOARD waveshare_rp2350_pizero CACHE STRING "Board type")
 
 # Pull in Pico SDK (must be before project)
 include(pico_sdk_import.cmake)
@@ -39,6 +39,7 @@ pico_set_linker_script(core0 ${CMAKE_CURRENT_SOURCE_DIR}/memmap_core0.ld)
 
 target_compile_definitions(core0 PRIVATE
     PICO_FLASH_SIZE_BYTES=\(2*1024*1024\)
+    PICO_PIO_USE_GPIO_BASE=1
 )
 
 # Add the standard library, multicore and FatFS/SPI to the build

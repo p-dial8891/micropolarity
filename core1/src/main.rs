@@ -40,7 +40,7 @@ pub struct wifi_per {
     p_23 : embassy_rp::Peri<'static, embassy_rp::peripherals::PIN_23>,
     p_25 : embassy_rp::Peri<'static, embassy_rp::peripherals::PIN_25>,
     p_24 : embassy_rp::Peri<'static, embassy_rp::peripherals::PIN_24>,
-    p_29 : embassy_rp::Peri<'static, embassy_rp::peripherals::PIN_29>,    
+    p_9 : embassy_rp::Peri<'static, embassy_rp::peripherals::PIN_9>,    
     pio1 : embassy_rp::Peri<'static, embassy_rp::peripherals::PIO1>,
     dma : embassy_rp::Peri<'static, embassy_rp::peripherals::DMA_CH10>
 }
@@ -48,9 +48,9 @@ pub struct wifi_per {
 pub struct player_per {
     pio : embassy_rp::Peri<'static, embassy_rp::peripherals::PIO0>,
     dma : embassy_rp::Peri<'static, embassy_rp::peripherals::DMA_CH11>,
-    bit_clock_pin : embassy_rp::Peri<'static, embassy_rp::peripherals::PIN_27>,
-    left_right_clock_pin : embassy_rp::Peri<'static, embassy_rp::peripherals::PIN_28>,
-    data_pin :  embassy_rp::Peri<'static, embassy_rp::peripherals::PIN_3>,
+    bit_clock_pin : embassy_rp::Peri<'static, embassy_rp::peripherals::PIN_18>,
+    left_right_clock_pin : embassy_rp::Peri<'static, embassy_rp::peripherals::PIN_19>,
+    data_pin :  embassy_rp::Peri<'static, embassy_rp::peripherals::PIN_21>,
 }
 
 #[embassy_executor::task]
@@ -70,12 +70,21 @@ async fn cyw43_task(runner: cyw43::Runner<'static, cyw43::SpiBus<Output<'static>
     runner.run().await
 }
 
-//#[embassy_executor::main(executor = "embassy_rp::executor::Executor",  entry = "cortex_m_rt::entry")]
+#[embassy_executor::task]
+async fn core1_async_loop() {
+
+    loop {
+        log::info!("Spawning tasks...");
+        Timer::after_millis(2000).await;
+    }
+}
+
+// #[embassy_executor::main(executor = "embassy_rp::executor::Executor",  entry = "cortex_m_rt::entry")]
 #[embassy_executor::task]
 async fn core1_main_loop(
     spawner: embassy_executor::Spawner,
     wifi_p : wifi_per,
-    player_p : player_per
+   player_p : player_per
 ) {
 
     // 2. Initialize the RP2350 embassy peripherals architecture 
@@ -105,7 +114,7 @@ async fn core1_main_loop(
         pio.irq0,
         cs,
         wifi_p.p_24,
-        wifi_p.p_29,
+        wifi_p.p_9,
         dma::Channel::new(wifi_p.dma, Irqs),
     );
     
@@ -157,6 +166,7 @@ async fn core1_main_loop(
     
     player::player_task(player_p, stack, &mut rx_buffer, &mut tx_buffer).await;
 
+    
 }
 
 #[panic_handler]
@@ -191,22 +201,21 @@ fn main() -> ! {
     let executor = EXECUTOR.init(Executor::new());
     executor.run(|spawner| {
         spawner.spawn(logger_task(p.USB).unwrap());
-        //spawner.spawn(core1_async_loop().unwrap());
+        // spawner.spawn(core1_async_loop().unwrap());
         spawner.spawn(core1_main_loop(
             spawner,
             wifi_per { 
                 p_23 : p.PIN_23, p_25 : p.PIN_25, p_24 : p.PIN_24, 
-                p_29 : p.PIN_29, pio1 : p.PIO1, dma : p.DMA_CH10 
+                p_9 : p.PIN_9, pio1 : p.PIO1, dma : p.DMA_CH10 
             },
             player_per {
                 pio : p.PIO0, dma : p.DMA_CH11, 
-                bit_clock_pin : p.PIN_27, left_right_clock_pin : p.PIN_28, 
-                data_pin : p.PIN_3
+                bit_clock_pin : p.PIN_18, left_right_clock_pin : p.PIN_19, 
+                data_pin : p.PIN_21
             }
         )
         .unwrap());
         //spawner.spawn(core1_consumer_task().unwrap());
- 
         // spawner.spawn(player::player_task(
         //    p.PIO0, p.DMA_CH11, p.PIN_27, p.PIN_28, p.PIN_3
         // ).unwrap());

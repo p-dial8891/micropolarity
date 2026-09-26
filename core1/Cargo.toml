@@ -26,7 +26,7 @@ embassy-executor = {
 embassy-rp = { 
     version = "0.10.0", 
     default-features = false, 
-    features = ["rt", "multicore", "rp235xa", "critical-section-impl", "imagedef-secure-exe",
+    features = ["rt", "multicore", "rp235xb", "critical-section-impl", "imagedef-secure-exe",
     "time-driver"],
     path = "../embassy/embassy-rp"
 }
@@ -57,6 +57,8 @@ critical-section = "1.2.0"
 rp-pac = { version = "7.0.0" }
 nanomp3 = "0.1.1"
 embedded-io-async = "0.7.0"
+ratatui = { version = "0.30.2", default-features = false } #ratatui does not compile in no_std with a backend!
+ansi-escapes = "0.2.0"
 #rp235x-hal = "0.4.0"
 
 [features]
