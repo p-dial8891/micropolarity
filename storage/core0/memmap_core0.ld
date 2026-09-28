@@ -27,8 +27,8 @@ MEMORY
     /* Constrain Core 0 to the first 2MB of the 4MB flash layout */
     FLASH(rx) : ORIGIN = 0x10000000, LENGTH = 2048k
 
-    /* Constrain Core 0 to the lower 64KB of the 512KB main RAM strip */
-    RAM(rwx) : ORIGIN = 0x20000000, LENGTH = 64k
+    /* Constrain Core 0 to the lower 128KB of the 512KB main RAM strip */
+    RAM(rwx) : ORIGIN = 0x20000000, LENGTH = 128k
 
     SCRATCH_X(rwx) : ORIGIN = 0x20080000, LENGTH = 4k
     SCRATCH_Y(rwx) : ORIGIN = 0x20081000, LENGTH = 4k

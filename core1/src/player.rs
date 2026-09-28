@@ -30,10 +30,15 @@ impl Read for FileReader {
         SharedMessage::send_message(MessageId::GET_AUDIO, &self.rb, None).await;
         while let m = SharedMessage::receive_message(&self.rb, buf).await {
             if m.0 == MessageId::NOOP {
+                // log::info!("Disk read did not receive expected response : m.0 is {:?}", m.0);
                 Timer::after_millis(5).await;
                 continue;
-            } else {
+            } else 
+            if m.0 == MessageId::GET_AUDIO {
                 bytes_popped = m.1;
+                break;
+            } else {
+                log::warn!("Unknown message id received : {:?}", m.0);
                 break;
             }
         }
@@ -73,12 +78,12 @@ async fn select_next_track(
             let mut rxbuf = [0;0usize];
             read = 0;
             log::info!("CR found at {}", n);
+            SharedMessage::send_message(MessageId::PLAY_FILE, &rb, Some(&buffer[..n])).await;
             loop {
-                SharedMessage::send_message(MessageId::PLAY_FILE, &rb, Some(&buffer[..n])).await;
                 Timer::after_millis(1000).await;
                 if let m = SharedMessage::receive_message(&rb, &mut rxbuf).await {
                     if m.0 != MessageId::PLAY_FILE {
-                        break;
+                        continue;
                     } else {
                         return;
                     }
@@ -133,12 +138,13 @@ async fn select_next_track<'c>(
             let mut rxbuf = [0;0usize];
             read = 0;
             log::info!("CR found at {}", n);
+            SharedMessage::send_message(MessageId::PLAY_FILE, &rb, Some(&buffer[..n])).await;
             loop {
-                SharedMessage::send_message(MessageId::PLAY_FILE, &rb, Some(&buffer[..n])).await;
                 Timer::after_millis(1000).await;
                 if let m = SharedMessage::receive_message(&rb, &mut rxbuf).await {
                     if m.0 != MessageId::PLAY_FILE {
-                        break;
+                        log::warn!("IPC Message ID was not MessageId::PLAY_FILE. It was {:?}", m.0);
+                        continue;
                     } else {
                         return Ok(socket);
                     }
@@ -190,7 +196,7 @@ pub async fn player_task(
     let mut profile_start = 0;
     let mut profile_end = 0;
 
-    const BUFFER_SIZE : usize = 300*1024; // bytes
+    const BUFFER_SIZE : usize = 256*1024; // bytes
     static READ_BUF_POOL: StaticCell<[MaybeUninit<u8>;BUFFER_SIZE]> = StaticCell::new();
     let mut buffer_static_unaligned = READ_BUF_POOL.init_with(|| [MaybeUninit::zeroed(); BUFFER_SIZE] );
     let (prefix, mut buffer_static, suffix) = unsafe { buffer_static_unaligned.align_to_mut::<MaybeUninit<f32>>() };

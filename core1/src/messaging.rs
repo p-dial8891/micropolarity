@@ -27,7 +27,7 @@ pub struct SharedMessage {
 }
 
 #[repr(u32)]
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug)]
 pub enum MessageId {
     NOOP = 0,
     PLAY_FILE = 1,
@@ -151,7 +151,14 @@ impl SharedMessage {
     pub async fn receive_message(rb : &Buffer, data : &mut [u8]) -> (MessageId, usize) {
         let mut count = FIFO_RETRY_COUNT;
         let fifo = SIO.fifo();
-        if !fifo.st().read().vld() {
+        while !fifo.st().read().vld() && count > 0 {
+            // unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0x2222_2222); }
+            Timer::after_millis(1).await;
+            count -= 1;
+        }
+        if count == 0 {
+            // unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0x6EC07111); }
+            // cortex_m::asm::dmb();
             return (MessageId::NOOP, 0usize);
         }
         let mid = match fifo.rd().read() {
@@ -165,6 +172,7 @@ impl SharedMessage {
                 MessageId::NOOP 
             }
         };
+        count = FIFO_RETRY_COUNT;
         while !fifo.st().read().vld() && count > 0 {
             unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0x2222_2222); }
             Timer::after_millis(1).await;
