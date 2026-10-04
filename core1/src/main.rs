@@ -84,7 +84,7 @@ async fn core1_async_loop() {
 async fn core1_main_loop(
     spawner: embassy_executor::Spawner,
     wifi_p : wifi_per,
-   player_p : player_per
+    player_p : player_per
 ) {
 
     // 2. Initialize the RP2350 embassy peripherals architecture 
