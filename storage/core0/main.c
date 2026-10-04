@@ -142,18 +142,6 @@ void direct_boot_core1(uint32_t entry_addr, uint32_t stack_ptr, uint32_t vtor) {
  */
 int main() {
     stdio_init_all();
-    // if (pio_set_gpio_base(pio2, 16) ) {
-    //     printf("PIO GPIO Base set error.");
-    // }
-    // printf("Gpiobase is %d\n",pio2->gpiobase);
-    
-    // gpio_set_input_hysteresis_enabled(30, true);
-    // gpio_set_input_hysteresis_enabled(31, true);
-    // gpio_set_input_hysteresis_enabled(40, true);
-    // gpio_set_input_hysteresis_enabled(41, true);
-    // gpio_set_input_hysteresis_enabled(42, true);
-    // gpio_set_input_hysteresis_enabled(43, true);
-    
     sleep_ms(2000); // Wait for serial monitor to connect
 
     // See FatFs - Generic FAT Filesystem Module, "Application Interface",
@@ -168,18 +156,12 @@ int main() {
     uint32_t rust_stack_pointer = rust_vector_table[0]; 
     uint32_t rust_entry_address = rust_vector_table[1]; 
 
-    // MANDATORY FIX: Force thumb mode bit high for Cortex-M33
-    //rust_entry_address |= 1;
-
     printf("Rust Vector Table Address: 0x%08X\n", RUST_FLASH_ORIGIN);
     printf("Extracted Core 1 Stack Pointer: 0x%08X\n", rust_stack_pointer);
     printf("Extracted Core 1 Entry Point: 0x%08X\n", rust_entry_address);
 
     // 3. Fire the launch sequence
-    // multicore_reset_core1(); // Clear any debugger stalls
-    // sleep_ms(10);
     multicore_launch_core1_raw((void (*)())rust_entry_address, (uint32_t*)rust_stack_pointer, RUST_FLASH_ORIGIN);
-    //direct_boot_core1(rust_entry_address, rust_stack_pointer, RUST_FLASH_ORIGIN);
     sleep_ms(1000);
 
     ring_buffer_init();
@@ -192,7 +174,6 @@ int main() {
 
 #ifdef ENABLE_DISK
     static FATFS fs;
-    // FRESULT fr;
     FRESULT fr = f_mount(&fs, "", 1);
     if (FR_OK != fr) {
         panic("f_mount error: %s (%d)\n", FRESULT_str(fr), fr);

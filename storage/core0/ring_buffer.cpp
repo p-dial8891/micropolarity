@@ -77,17 +77,6 @@ extern "C" {
             // // before updating the head pointer.
             // __dmb(); 
             rb->head = current_head;
-    #if 0
-            // Calculate currently queued bytes
-            uint32_t queued = (current_head >= current_tail) ? 
-                            (current_head - current_tail) : 
-                            (RING_BUFFER_SIZE - (current_tail - current_head));
-
-            // Only interrupt Core 1 if we crossed the threshold
-            if (queued >= WATERMARK_THRESHOLD) {
-                sio_hw->doorbell_out_set = (1UL << 0);
-            }
-    #endif
         }
 
         return bytes_written;
