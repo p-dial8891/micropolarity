@@ -233,6 +233,13 @@ int main() {
                     f_sync(&debug_fil);
 #endif
                     break;
+                case 0xADEF6666:
+                    printf("[Core 1 Sync]: WARNING! Core 1 FIFO empty.\n");
+#ifdef ENABLE_DISK
+                    f_printf(&debug_fil, "[Core 1 Sync]: WARNING! Core 1 FIFO empty.\n");
+                    f_sync(&debug_fil);
+#endif
+                    break;
                 case 0x5EC07111:
                     printf("[Core 1 Sync]: ERROR! Core 1 send message blocked.\n");
 #ifdef ENABLE_DISK
