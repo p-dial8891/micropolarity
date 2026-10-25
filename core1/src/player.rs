@@ -83,6 +83,7 @@ async fn select_next_track(
                 Timer::after_millis(1000).await;
                 if let m = SharedMessage::receive_message(&rb, &mut rxbuf).await {
                     if m.0 != MessageId::PLAY_FILE {
+                        unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0xADEF_6666); }
                         continue;
                     } else {
                         return;

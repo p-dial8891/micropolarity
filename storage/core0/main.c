@@ -234,9 +234,9 @@ int main() {
 #endif
                     break;
                 case 0xADEF6666:
-                    printf("[Core 1 Sync]: WARNING! Core 1 FIFO empty.\n");
+                    printf("[Core 1 Sync]: WARNING! Core 1 Track list empty.\n");
 #ifdef ENABLE_DISK
-                    f_printf(&debug_fil, "[Core 1 Sync]: WARNING! Core 1 FIFO empty.\n");
+                    f_printf(&debug_fil, "[Core 1 Sync]: WARNING! Core 1 Track list empty.\n");
                     f_sync(&debug_fil);
 #endif
                     break;
