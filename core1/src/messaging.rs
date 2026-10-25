@@ -152,12 +152,12 @@ impl SharedMessage {
         let mut count = FIFO_RETRY_COUNT;
         let fifo = SIO.fifo();
         while !fifo.st().read().vld() && count > 0 {
-            // unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0x2222_2222); }
+            unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0x2222_2222); }
             Timer::after_millis(1).await;
             count -= 1;
         }
         if count == 0 {
-            // unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0x6EC07111); }
+            unsafe { core::ptr::write_volatile(HANDSHAKE_ADDR, 0xADEF_6666); }
             // cortex_m::asm::dmb();
             return (MessageId::NOOP, 0usize);
         }
