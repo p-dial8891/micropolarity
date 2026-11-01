@@ -1,19 +1,11 @@
-# Simple Example for an SDIO-attached SD card
+# Core 0
 
-### Overview
+This software is meant to be a standalone binary that can be programmed to core 0 of the RP2350. It is responsible for the following functions:
+1. Storage
+2. Graphical User Interface
 
-This program is a simple demonstration of writing to an SD card using the [FatFs API](http://elm-chan.org/fsw/ff/00index_e.html).
-It initializes the standard input/output and real-time clock, mounts an SD card, writes to a file, and then unmounts the SD card.
+## Storage
+The audio files are stored on an SD cards and this software exposes read access to them via interprocessor communication.
 
-### Features
-
-* Mounts an SD card
-* Opens a file in append mode and writes a message
-* Closes the file and unmounts the SD card
-* Prints success and failure messages to the STDIO console
-
-### Requirements
-* You will need to
-[customize](https://github.com/carlk3/no-OS-FatFS-SD-SDIO-SPI-RPi-Pico#customizing-for-the-hardware-configuration)
-the hardware configuration in the `main.c` file to match your hardware.
-* PICO_SDK_PATH must be set in the Cmake: Configure Environment
+## Graphical User Interface
+The GUI is handled by LVGL and is not yet functioning although demos have been done and are available as repository branches.
