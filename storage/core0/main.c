@@ -52,28 +52,50 @@ extern size_t ring_buffer_push_string(const uint8_t* source, size_t length);
 #ifdef ENABLE_DISK
 
 /* Configuration of hardware SPI object */
-static spi_t spi = {
-    .hw_inst = spi1,  // SPI component
-    .sck_gpio = 30,    // GPIO number (not Pico pin number)
-    .mosi_gpio = 31,
-    .miso_gpio = 40,
-    //.baud_rate = 125 * 1000 * 1000 / 8  // 15625000 Hz
-    //.baud_rate = 125 * 1000 * 1000 / 6  // 20833333 Hz
-    .baud_rate = 125 * 1000 * 1000 / 4  // 31250000 Hz
-    //.baud_rate = 125 * 1000 * 1000 / 2  // 62500000 Hz
+// static spi_t spi = {
+//     .hw_inst = spi1,  // SPI component
+//     .sck_gpio = 30,    // GPIO number (not Pico pin number)
+//     .mosi_gpio = 31,
+//     .miso_gpio = 40,
+//     //.baud_rate = 125 * 1000 * 1000 / 8  // 15625000 Hz
+//     //.baud_rate = 125 * 1000 * 1000 / 6  // 20833333 Hz
+//     .baud_rate = 125 * 1000 * 1000 / 4  // 31250000 Hz
+//     //.baud_rate = 125 * 1000 * 1000 / 2  // 62500000 Hz
+// };
+
+// /* SPI Interface */
+// static sd_spi_if_t spi_if = {
+//     .spi = &spi,  // Pointer to the SPI driving this card
+//     .ss_gpio = 43  // The SPI slave select GPIO for this SD card
+// };
+
+// /* Configuration of the SD Card socket object */
+// static sd_card_t sd_card = {
+//     .type = SD_IF_SPI,
+//     .spi_if_p = &spi_if  // Pointer to the SPI interface driving this card
+// };
+// 
+/* SDIO Interface */
+static sd_sdio_if_t sdio_if = {
+    /*
+    Pins CLK_gpio, D1_gpio, D2_gpio, and D3_gpio are at offsets from pin D0_gpio.
+    The offsets are determined by sd_driver\SDIO\rp2040_sdio.pio.
+        CLK_gpio = (D0_gpio + SDIO_CLK_PIN_D0_OFFSET) % 32;
+        As of this writing, SDIO_CLK_PIN_D0_OFFSET is 18,
+            which is -14 in mod32 arithmetic, so:
+        CLK_gpio = D0_gpio -14.
+        D1_gpio = D0_gpio + 1;
+        D2_gpio = D0_gpio + 2;
+        D3_gpio = D0_gpio + 3;
+    */
+    .CMD_gpio = 20,
+    .D0_gpio = 21,
+    .baud_rate = 125 * 1000 * 1000 / 6  // 20833333 Hz
 };
 
-/* SPI Interface */
-static sd_spi_if_t spi_if = {
-    .spi = &spi,  // Pointer to the SPI driving this card
-    .ss_gpio = 43  // The SPI slave select GPIO for this SD card
-};
+/* Hardware Configuration of the SD Card socket "object" */
+static sd_card_t sd_card = {.type = SD_IF_SDIO, .sdio_if_p = &sdio_if};
 
-/* Configuration of the SD Card socket object */
-static sd_card_t sd_card = {
-    .type = SD_IF_SPI,
-    .spi_if_p = &spi_if  // Pointer to the SPI interface driving this card
-};
 
 /* ********************************************************************** */
 

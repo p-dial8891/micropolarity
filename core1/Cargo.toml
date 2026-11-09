@@ -26,7 +26,7 @@ embassy-executor = {
 embassy-rp = { 
     version = "0.10.0", 
     default-features = false, 
-    features = ["rt", "multicore", "rp235xb", "critical-section-impl", "imagedef-secure-exe",
+    features = ["rt", "multicore", "rp235xa", "critical-section-impl", "imagedef-secure-exe",
     "time-driver"],
     path = "../embassy/embassy-rp"
 }

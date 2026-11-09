@@ -16,7 +16,7 @@ endif()
 
 cmake_minimum_required(VERSION 3.5)
 
-set(PICO_BOARD waveshare_rp2350_pizero CACHE STRING "Board type")
+set(PICO_BOARD waveshare_rp2350_touch_lcd_1.28 CACHE STRING "Board type")
 
 # Pull in Pico SDK (must be before project)
 include(pico_sdk_import.cmake)
