@@ -53,10 +53,10 @@ extern size_t ring_buffer_push_string(const uint8_t* source, size_t length);
 
 /* Configuration of hardware SPI object */
 // static spi_t spi = {
-//     .hw_inst = spi1,  // SPI component
-//     .sck_gpio = 30,    // GPIO number (not Pico pin number)
-//     .mosi_gpio = 31,
-//     .miso_gpio = 40,
+//     .hw_inst = spi0,  // SPI component
+//     .sck_gpio = 19,    // GPIO number (not Pico pin number)
+//     .mosi_gpio = 20,
+//     .miso_gpio = 21,
 //     //.baud_rate = 125 * 1000 * 1000 / 8  // 15625000 Hz
 //     //.baud_rate = 125 * 1000 * 1000 / 6  // 20833333 Hz
 //     .baud_rate = 125 * 1000 * 1000 / 4  // 31250000 Hz
@@ -74,7 +74,7 @@ extern size_t ring_buffer_push_string(const uint8_t* source, size_t length);
 //     .type = SD_IF_SPI,
 //     .spi_if_p = &spi_if  // Pointer to the SPI interface driving this card
 // };
-// 
+
 /* SDIO Interface */
 static sd_sdio_if_t sdio_if = {
     /*
@@ -88,6 +88,8 @@ static sd_sdio_if_t sdio_if = {
         D2_gpio = D0_gpio + 2;
         D3_gpio = D0_gpio + 3;
     */
+    .DMA_IRQ_num = DMA_IRQ_1,
+    .SDIO_PIO = pio2,
     .CMD_gpio = 20,
     .D0_gpio = 21,
     .baud_rate = 125 * 1000 * 1000 / 6  // 20833333 Hz

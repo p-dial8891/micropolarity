@@ -37,10 +37,10 @@ bind_interrupts!(struct Irqs {
 });
 
 pub struct wifi_per {
-    p_28 : embassy_rp::Peri<'static, embassy_rp::peripherals::PIN_28>,
-    p_29 : embassy_rp::Peri<'static, embassy_rp::peripherals::PIN_29>,
     p_6 : embassy_rp::Peri<'static, embassy_rp::peripherals::PIN_6>,
-    p_7 : embassy_rp::Peri<'static, embassy_rp::peripherals::PIN_7>,    
+    p_7 : embassy_rp::Peri<'static, embassy_rp::peripherals::PIN_7>,
+    p_29 : embassy_rp::Peri<'static, embassy_rp::peripherals::PIN_29>,
+    p_28 : embassy_rp::Peri<'static, embassy_rp::peripherals::PIN_28>,    
     pio1 : embassy_rp::Peri<'static, embassy_rp::peripherals::PIO1>,
     dma : embassy_rp::Peri<'static, embassy_rp::peripherals::DMA_CH10>
 }
@@ -102,8 +102,8 @@ async fn core1_main_loop(
     //let fw = unsafe { core::slice::from_raw_parts(0x10100000 as *const u8, 230321) };
     //let clm = unsafe { core::slice::from_raw_parts(0x10140000 as *const u8, 4752) };
 
-    let pwr = Output::new(wifi_p.p_29, Level::Low);
-    let cs = Output::new(wifi_p.p_28, Level::High);
+    let pwr = Output::new(wifi_p.p_6, Level::Low);
+    let cs = Output::new(wifi_p.p_7, Level::High);
     let mut pio = Pio::new(wifi_p.pio1, Irqs);
     let spi = PioSpi::new(
         &mut pio.common,
@@ -113,8 +113,8 @@ async fn core1_main_loop(
         RM2_CLOCK_DIVIDER,
         pio.irq0,
         cs,
-        wifi_p.p_7,
-        wifi_p.p_6,
+        wifi_p.p_29,
+        wifi_p.p_28,
         dma::Channel::new(wifi_p.dma, Irqs),
     );
     
@@ -202,19 +202,19 @@ fn main() -> ! {
     executor.run(|spawner| {
         spawner.spawn(logger_task(p.USB).unwrap());
         // spawner.spawn(core1_async_loop().unwrap());
-        // spawner.spawn(core1_main_loop(
-        //     spawner,
-        //     wifi_per { 
-        //         p_28 : p.PIN_28, p_29 : p.PIN_29, p_6 : p.PIN_6, 
-        //         p_7 : p.PIN_7, pio1 : p.PIO1, dma : p.DMA_CH10 
-        //     },
-        //     player_per {
-        //         pio : p.PIO0, dma : p.DMA_CH11, 
-        //         bit_clock_pin : p.PIN_2, left_right_clock_pin : p.PIN_3, 
-        //         data_pin : p.PIN_4
-        //     }
-        // )
-        // .unwrap());
+        spawner.spawn(core1_main_loop(
+            spawner,
+            wifi_per { 
+                p_6 : p.PIN_6, p_7 : p.PIN_7, p_29 : p.PIN_29, 
+                p_28 : p.PIN_28, pio1 : p.PIO1, dma : p.DMA_CH10 
+            },
+            player_per {
+                pio : p.PIO0, dma : p.DMA_CH11, 
+                bit_clock_pin : p.PIN_2, left_right_clock_pin : p.PIN_3, 
+                data_pin : p.PIN_4
+            }
+        )
+        .unwrap());
         //spawner.spawn(core1_consumer_task().unwrap());
         // spawner.spawn(player::player_task(
         //    p.PIO0, p.DMA_CH11, p.PIN_27, p.PIN_28, p.PIN_3
