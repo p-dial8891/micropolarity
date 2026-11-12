@@ -59,7 +59,7 @@ async fn select_next_track(
     tx_buffer : &mut [u8]
 ) {
     
-    let mut buffer = [0u8; 100];
+    let mut buffer = [0u8; MAX_FN_LENGTH];
     let mut read = 0usize;
     let rb = Buffer::new();
     let mut socket = TcpSocket::new(stack, rx_buffer, tx_buffer);
