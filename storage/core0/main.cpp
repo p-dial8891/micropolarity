@@ -1,0 +1,406 @@
+/* main.c
+Copyright 2021 Carl John Kugler III
+
+Licensed under the Apache License, Version 2.0 (the License); you may not use
+this file except in compliance with the License. You may obtain a copy of the
+License at
+
+   http://www.apache.org/licenses/LICENSE-2.0
+Unless required by applicable law or agreed to in writing, software distributed
+under the License is distributed on an AS IS BASIS, WITHOUT WARRANTIES OR
+CONDITIONS OF ANY KIND, either express or implied. See the License for the
+specific language governing permissions and limitations under the License.
+*/
+
+#include <stdio.h>
+#include <stdint.h>
+#include <string.h>
+//
+#include "pico/stdlib.h"
+//
+#include "pico/multicore.h"
+#include "ring_buffer.h"
+#include "messaging.h"
+#include "display.h"
+#include "runtime.hpp"
+#include "lvgl.h"
+#include "lvgl/examples/lv_examples.h"
+
+#define ENABLE_DISK
+
+#ifdef ENABLE_DISK
+#include "f_util.h"
+#include "ff.h"
+#include "hw_config.h"
+#endif
+/*
+
+This file should be tailored to match the hardware design.
+
+See
+https://github.com/carlk3/no-OS-FatFS-SD-SDIO-SPI-RPi-Pico/tree/main#customizing-for-the-hardware-configuration
+
+*/
+
+#include "hw_config.h"
+#include "main.h"
+
+extern void ring_buffer_init(void);
+extern size_t ring_buffer_push_string(const uint8_t* source, size_t length);
+
+#define HANDSHAKE_ADDR      ((volatile uint32_t*)0x20080000)
+// RP2350 updated origins based on the new memory partition
+#define RUST_FLASH_ORIGIN   0x10200000
+#define RUST_RAM_END        (0x20010000 + (448 * 1024)) // 0x20080000
+
+#define MAX_FN_LENGTH 256
+#define TICK_FACTOR   (10)
+
+/* SDIO Interface */
+static sd_sdio_if_t sdio_if = {
+    /*
+    Pins CLK_gpio, D1_gpio, D2_gpio, and D3_gpio are at offsets from pin D0_gpio.
+    The offsets are determined by sd_driver\SDIO\rp2040_sdio.pio.
+        CLK_gpio = (D0_gpio + SDIO_CLK_PIN_D0_OFFSET) % 32;
+        As of this writing, SDIO_CLK_PIN_D0_OFFSET is 18,
+            which is -14 in mod32 arithmetic, so:
+        CLK_gpio = D0_gpio -14.
+        D1_gpio = D0_gpio + 1;
+        D2_gpio = D0_gpio + 2;
+        D3_gpio = D0_gpio + 3;
+    */
+    .DMA_IRQ_num = DMA_IRQ_1,
+    .SDIO_PIO = pio2,
+    .CMD_gpio = 20,
+    .D0_gpio = 21,
+    .baud_rate = 125 * 1000 * 1000 / 6  // 20833333 Hz
+};
+
+/* Hardware Configuration of the SD Card socket "object" */
+static sd_card_t sd_card = {.type = SD_IF_SDIO, .sdio_if_p = &sdio_if};
+
+/**
+ * @brief Get the number of SD cards.
+ *
+ * @return The number of SD cards, which is 1 in this case.
+ */
+size_t sd_get_num() { return 1; }
+
+/**
+ * @brief Get a pointer to an SD card object by its number.
+ *
+ * @param[in] num The number of the SD card to get.
+ *
+ * @return A pointer to the SD card object, or @c NULL if the number is invalid.
+ */
+sd_card_t* sd_get_by_num(size_t num) {
+    if (0 == num) {
+        // The number 0 is a valid SD card number.
+        // Return a pointer to the sd_card object.
+        return &sd_card;
+    } else {
+        // The number is invalid. Return @c NULL.
+        return NULL;
+    }
+}
+
+sd_timeouts_t sd_timeouts = {
+    .sd_command = 2000, // Timeout in ms for response
+    .sd_command_retries = 3, // Times SPI cmd is retried when there is no response
+    .sd_lock = 8000, // Timeout in ms for response
+    .sd_spi_read = 1000, // Timeout in ms for response
+    .sd_spi_write = 1000, // Timeout in ms for response
+    .sd_spi_write_read = 1000, // Timeout in ms for response
+    .spi_lock = 4000, // Timeout in ms for response
+    .rp2040_sdio_command_R1 = 20, // Timeout in ms for response
+    .rp2040_sdio_command_R2 = 4, // Timeout in ms for response
+    .rp2040_sdio_command_R3 = 4, // Timeout in ms for response
+    .rp2040_sdio_rx_poll = 5000, // Timeout in ms for response
+    .rp2040_sdio_tx_poll = 5000, // Timeout in ms for response
+    .sd_sdio_begin = 1000, // Timeout in ms for response
+    .sd_sdio_stopTransmission = 200, // Timeout in ms for response
+};
+
+#if 0
+#define SIO_BASE            0xd0000000
+#define SIO_CORE1_MPU_BASE  ((volatile uint32_t*)(SIO_BASE + 0x2b0))
+#define SIO_CORE1_MPU_CTRL  ((volatile uint32_t*)(SIO_BASE + 0x2bc))
+
+void direct_boot_core1(uint32_t entry_addr, uint32_t stack_ptr, uint32_t vtor) {
+    // Reset Core 1 to ensure it is sitting in the clean ROM sleep loop
+    multicore_reset_core1();
+    sleep_ms(10);
+
+    // Write the raw ARM boot parameters straight into the SIO registers
+    // The RP2350 ROM polls these registers natively when awoken by an event.
+    SIO_CORE1_MPU_BASE[0] = vtor;       // Register Vector Table Address
+    SIO_CORE1_MPU_BASE[1] = stack_ptr;  // Register Stack Pointer
+    SIO_CORE1_MPU_BASE[2] = entry_addr; // Register Reset Vector (with thumb bit!)
+    
+    // Fire a Send-Event instruction to wake Core 1 up out of its low-power sleep
+    __asm volatile("sev");
+}
+#endif
+static char filename[MAX_FN_LENGTH] = {};
+
+/**
+ * @brief The main function of the program.
+ *
+ * @details This function initializes the stdio interface, prints a greeting to the
+ * console, mounts the SD card, writes a message to a file, and unmounts the SD card.
+ *
+ */
+int main() {
+    stdio_init_all();
+    sleep_ms(2000); // Wait for serial monitor to connect
+    printf("\n--- Starting Multicore Handshake Monitor ---\n");
+
+    // 1. Force state to RESET
+    *HANDSHAKE_ADDR = 0x00000000;
+
+    // 2. Unpack the vector table array
+    uint32_t* rust_vector_table = (uint32_t*)RUST_FLASH_ORIGIN;
+    uint32_t rust_stack_pointer = rust_vector_table[0]; 
+    uint32_t rust_entry_address = rust_vector_table[1]; 
+
+    // MANDATORY FIX: Force thumb mode bit high for Cortex-M33
+    //rust_entry_address |= 1;
+
+    printf("Rust Vector Table Address: 0x%08X\n", RUST_FLASH_ORIGIN);
+    printf("Extracted Core 1 Stack Pointer: 0x%08X\n", rust_stack_pointer);
+    printf("Extracted Core 1 Entry Point: 0x%08X\n", rust_entry_address);
+
+    // 3. Fire the launch sequence
+    // multicore_reset_core1(); // Clear any debugger stalls
+    // sleep_ms(10);
+    multicore_launch_core1_raw((void (*)())rust_entry_address, (uint32_t*)rust_stack_pointer, RUST_FLASH_ORIGIN);
+    //direct_boot_core1(rust_entry_address, rust_stack_pointer, RUST_FLASH_ORIGIN);
+    sleep_ms(1000);
+
+    display_init();
+    ring_buffer_init();
+    gpio_init(2);
+    gpio_pull_up(2);
+    gpio_set_dir(2, GPIO_IN);
+
+    static FIL fil;
+    static FIL debug_fil;
+    static uint8_t rxdata[RING_BUFFER_SIZE];
+    static uint8_t txdata[RING_BUFFER_SIZE];
+    bool file_open = false;
+    size_t total_read = 0;
+    size_t total_written = 0;
+    size_t len = 0;
+    size_t read = 0;
+    size_t written = 0;
+    size_t rxlen = RING_BUFFER_SIZE;
+    uint32_t last_state = 0xFFFFFFFF;
+    bool last_pin_val = true;
+    lv_obj_t * label = NULL;
+    uint32_t tick_counter = TICK_FACTOR;
+
+#ifdef ENABLE_DISK
+    // See FatFs - Generic FAT Filesystem Module, "Application Interface",
+    // http://elm-chan.org/fsw/ff/00index_e.html
+    static FATFS fs;
+    FRESULT fr = f_mount(&fs, "", 1);
+    if (FR_OK != fr) {
+        panic("f_mount error: %s (%d)\n", FRESULT_str(fr), fr);
+        return -1;
+    }
+    extern uint32_t SystemCoreClock;
+    printf("System core clock is %d\n", SystemCoreClock);
+    
+    static FIL fil;
+    static FIL debug_fil;
+    fr = f_open(&debug_fil, "debug.log", FA_WRITE | FA_CREATE_ALWAYS);
+    if (FR_OK != fr && FR_EXIST != fr) {
+        panic("f_open(%s) error: %s (%d)\n", "debug.log", FRESULT_str(fr), fr);
+    }
+#endif
+
+    runtime.routine = {
+        [&]() {
+            bool ret = true;
+            uint32_t error;
+            error = MidErrorCode::NO_ERROR;
+            MessageId mid = receive_message(rxdata, &rxlen, &error);
+#ifdef ENABLE_DISK            
+            if (error == MidErrorCode::FIFO_BLOCKED) {
+                f_printf(&debug_fil, "[Core 0]: ERROR! Receive FIFO blocked.");
+                f_sync(&debug_fil);
+                panic("FIFO receive blocked.");
+            } else 
+            if ( mid == MessageId::GET_AUDIO ) {
+                //printf("Request received.\n");
+                fr = f_read(&fil,&txdata[len],((RING_BUFFER_SIZE-1)-(UINT)len),(UINT*)&read);
+                if (FR_OK != fr) {
+                    printf("f_read error: %s (%d)\n", FRESULT_str(fr), fr);
+                }
+                len += read;
+                total_read += read;
+                if ( len != 0 ) {
+                    uint32_t msg[2] = {1,1};
+                    //size_t written = ring_buffer_push_string(&txdata[0], len);
+                    size_t written = send_message(MessageId::GET_AUDIO, &txdata[0], len, &error);
+                    memmove((void*)&txdata[0], (const void*)&txdata[written], len - written);
+                    len -= written;
+                    total_written += written;
+                    // send_string(msg);
+                }
+                else {
+                    uint8_t msg[2] = {0,0};
+                    printf("Total bytes read : %d\n", total_read);
+                    printf("Total bytes written : %d\n", total_written);
+                    printf("Length in buffer : %d\n", len);
+                    (void)send_message(MessageId::GET_AUDIO, &msg[0], 0, &error);
+                    if (error == MidErrorCode::FIFO_BLOCKED) {
+                        f_printf(&debug_fil, "[Core 0]: ERROR! Send fifo blocked.");
+                        f_sync(&debug_fil);
+                        panic("FIFO send blocked.");
+                    }
+                }
+            } else
+            if ( mid == MessageId::PLAY_FILE ) {
+                uint8_t msg[2] = {0,0};
+                printf("Play file request received.\n");
+                if (file_open) {
+                    fr = f_close(&fil);
+                    if (FR_OK != fr) {
+                        printf("f_close error: %s (%d)\n", FRESULT_str(fr), fr);
+                    } else {
+                        printf("File closed.\n");
+                    }
+                    file_open = false;
+                }
+                memset(filename,0,MAX_FN_LENGTH);
+                printf("Received length is %d\n", rxlen);
+                memcpy(filename, rxdata, rxlen);
+                printf("Opening file : %s\n", filename);
+                fr = f_open(&fil, filename, FA_READ );
+                if (FR_OK != fr && FR_EXIST != fr) {
+                    f_printf(&debug_fil, "[Core 0]: Could not open file - %s", filename);
+                    f_sync(&debug_fil);
+                    panic("f_open(%s) error: %s (%d)\n", filename, FRESULT_str(fr), fr);
+                    // continue;
+                }
+                printf("File open return code : %d\n", fr);
+                (void)send_message(MessageId::PLAY_FILE, &msg[0], 0, &error);
+                if (error == MidErrorCode::FIFO_BLOCKED) {
+                    f_printf(&debug_fil, "[Core 0]: ERROR! Send fifo blocked.");
+                    f_sync(&debug_fil);
+                    panic("FIFO send blocked.");
+                }
+                (void)ui_track_name.push_deref(filename, MAX_FN_LENGTH);
+                file_open = true;
+            } else {
+                ret = false;
+            }
+#else
+            ret = false;
+#endif
+            return ret;
+        }
+    };
+
+    while (1) {
+
+        bool pin_val = gpio_get(2);
+
+        if ( pin_val != last_pin_val ) {
+            printf("Key pressed/depressed: %d\n", pin_val);
+            last_pin_val = pin_val;
+            label = display_create_file_label();
+        }
+
+        uint32_t current_state = *HANDSHAKE_ADDR;
+
+        if (current_state != last_state) {
+            last_state = current_state;
+
+            switch (current_state) {
+                case 0x00000000:
+                    printf("[Core 0 Log]: Core 1 hasn't responded yet.\n");
+                    break;
+                case 0x11111111:
+                    printf("[Core 1 Sync]: SUCCESS! Core 1 reached Rust main entry.\n");
+                    break;
+                case 0x33333333:
+                    printf("[Core 1 Sync]: SUCCESS! Core 1 completed init and is running.\n");
+                    break;
+                // case 0x5EC07111:
+                //     printf("[Core 1 Sync]: SUCCESS! Core 1 is running in secure mode.\n");
+                //     break;
+                // case 0x0045c111:
+                //     printf("[Core 1 Sync]: SUCCESS! Core 1 is running in non-secure mode.\n");
+                //     break;
+                case 0x4EC07111:
+                    printf("[Core 1 Sync]: SUCCESS! Core 1 clock init started.\n");
+                    break;
+                case 0x22222222:
+                    printf("[Core 1 Sync]: WARNING! Core 1 FIFO blocked.\n");
+#ifdef ENABLE_DISK
+                    f_printf(&debug_fil, "[Core 1 Sync]: WARNING! Core 1 FIFO blocked.\n");
+                    f_sync(&debug_fil);
+#endif
+                    break;
+                case 0xADEF6666:
+                    printf("[Core 1 Sync]: WARNING! Core 1 Track list empty.\n");
+#ifdef ENABLE_DISK
+                    f_printf(&debug_fil, "[Core 1 Sync]: WARNING! Core 1 Track list empty.\n");
+                    f_sync(&debug_fil);
+#endif
+                    break;
+                case 0x5EC07111:
+                    printf("[Core 1 Sync]: ERROR! Core 1 send message blocked.\n");
+#ifdef ENABLE_DISK
+                    f_printf(&debug_fil, "[Core 1 Sync]: ERROR! Core 1 send message blocked.\n");
+                    f_sync(&debug_fil);
+#endif
+                    break;
+                case 0x6EC07111:
+                    printf("[Core 1 Sync]: ERROR! Core 1 receive message blocked.\n");
+#ifdef ENABLE_DISK                    
+                    f_printf(&debug_fil, "[Core 1 Sync]: ERROR! Core 1 receive message blocked.\n");
+                    f_sync(&debug_fil);
+#endif
+                    break;
+                // case 0x7EC07111:
+                //     printf("[Core 1 Sync]: SUCCESS! Core 1 detected key release.\n");
+                //     break;
+                default:
+                    // If you see a completely random address value here, Core 1 hard-faulted
+                    // and printed its stack trace memory markers over the handshake window.
+                    printf("[CRITICAL FAULT]: Core 1 crashed! Handshake register state: 0x%08X\n", current_state);
+                    break;
+            }
+        }
+
+        if (!runtime.routine()) {
+#if 1
+            if ( tick_counter <= 0 ) {
+                tick_counter = TICK_FACTOR;
+
+                if ( ui_track_name.pop_deref(filename, MAX_FN_LENGTH) ) {
+                    if ( label != NULL ) {
+                        lv_label_set_text(label, filename);
+                    }
+                }
+                display_tick(TICK_PERIOD * TICK_FACTOR);
+            } else {
+                tick_counter--;
+                sleep_ms(TICK_PERIOD);
+            }
+#endif
+        } else {
+            sleep_ms(TICK_PERIOD);
+        }
+    }
+
+#ifdef ENABLE_DISK
+    f_unmount("");
+#endif
+
+}
+
+
