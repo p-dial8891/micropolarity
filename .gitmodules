@@ -4,6 +4,3 @@
 [submodule "embassy"]
 	path = embassy
 	url = https://github.com/p-dial8891/embassy.git
-[submodule "storage/lvgl"]
-	path = storage/lvgl
-	url = https://github.com/lvgl/lvgl.git
