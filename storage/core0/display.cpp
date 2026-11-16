@@ -16,11 +16,11 @@
 #define PIN_MISO     12
 #define PIN_MOSI     11
 #define PIN_SCK      10
-#define PIN_DC       8
+#define PIN_DC       14
 #define PIN_RST      15
 
-#define SCREEN_WIDTH  320
-#define SCREEN_HEIGHT 480
+#define SCREEN_WIDTH  240
+#define SCREEN_HEIGHT 320
 
 // Fast control macros
 #define DC_CMD()   gpio_put(PIN_DC, 0)

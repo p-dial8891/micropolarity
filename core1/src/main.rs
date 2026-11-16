@@ -60,11 +60,13 @@ async fn logger_task(usb: embassy_rp::Peri<'static, embassy_rp::peripherals::USB
     embassy_usb_logger::run!(1024, log::LevelFilter::Info, driver);
 }
 
+#[cfg(feature = "wifi")]
 #[embassy_executor::task]
 async fn net_task(mut runner: embassy_net::Runner<'static, cyw43::NetDriver<'static>>) -> ! {
     runner.run().await
 }
 
+#[cfg(feature = "wifi")]
 #[embassy_executor::task]
 async fn cyw43_task(runner: cyw43::Runner<'static, cyw43::SpiBus<Output<'static>, PioSpi<'static, PIO1, 0>>>) -> ! {
     runner.run().await
@@ -79,7 +81,7 @@ async fn core1_async_loop() {
     }
 }
 
-// #[embassy_executor::main(executor = "embassy_rp::executor::Executor",  entry = "cortex_m_rt::entry")]
+#[cfg(feature = "wifi")]
 #[embassy_executor::task]
 async fn core1_main_loop(
     spawner: embassy_executor::Spawner,
@@ -201,20 +203,23 @@ fn main() -> ! {
     let executor = EXECUTOR.init(Executor::new());
     executor.run(|spawner| {
         spawner.spawn(logger_task(p.USB).unwrap());
-        // spawner.spawn(core1_async_loop().unwrap());
-        spawner.spawn(core1_main_loop(
-            spawner,
-            wifi_per { 
-                p_6 : p.PIN_6, p_7 : p.PIN_7, p_29 : p.PIN_29, 
-                p_28 : p.PIN_28, pio1 : p.PIO1, dma : p.DMA_CH10 
-            },
-            player_per {
-                pio : p.PIO0, dma : p.DMA_CH11, 
-                bit_clock_pin : p.PIN_2, left_right_clock_pin : p.PIN_3, 
-                data_pin : p.PIN_4
-            }
-        )
-        .unwrap());
+        spawner.spawn(core1_async_loop().unwrap());
+        #[cfg(feature = "wifi")]
+        {
+            spawner.spawn(core1_main_loop(
+                spawner,
+                wifi_per { 
+                    p_6 : p.PIN_6, p_7 : p.PIN_7, p_29 : p.PIN_29, 
+                    p_28 : p.PIN_28, pio1 : p.PIO1, dma : p.DMA_CH10 
+                },
+                player_per {
+                    pio : p.PIO0, dma : p.DMA_CH11, 
+                    bit_clock_pin : p.PIN_2, left_right_clock_pin : p.PIN_3, 
+                    data_pin : p.PIN_4
+                }
+            )
+            .unwrap());
+        }
         //spawner.spawn(core1_consumer_task().unwrap());
         // spawner.spawn(player::player_task(
         //    p.PIO0, p.DMA_CH11, p.PIN_27, p.PIN_28, p.PIN_3

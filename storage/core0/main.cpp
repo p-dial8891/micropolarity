@@ -28,7 +28,7 @@ specific language governing permissions and limitations under the License.
 #include "lvgl.h"
 #include "lvgl/examples/lv_examples.h"
 
-#define ENABLE_DISK
+// #define ENABLE_DISK
 
 #ifdef ENABLE_DISK
 #include "f_util.h"
@@ -58,6 +58,15 @@ extern size_t ring_buffer_push_string(const uint8_t* source, size_t length);
 #define MAX_FN_LENGTH 256
 #define TICK_FACTOR   (10)
 
+/* 
+ * Weird fix for C++ linking
+ * Start
+ *
+ */
+void* __dso_handle = 0;
+// void* _fini = 0;
+/* End */
+
 /* SDIO Interface */
 static sd_sdio_if_t sdio_if = {
     /*
@@ -71,10 +80,10 @@ static sd_sdio_if_t sdio_if = {
         D2_gpio = D0_gpio + 2;
         D3_gpio = D0_gpio + 3;
     */
-    .DMA_IRQ_num = DMA_IRQ_1,
-    .SDIO_PIO = pio2,
     .CMD_gpio = 20,
     .D0_gpio = 21,
+    .SDIO_PIO = pio2,
+    .DMA_IRQ_num = DMA_IRQ_1,
     .baud_rate = 125 * 1000 * 1000 / 6  // 20833333 Hz
 };
 
@@ -123,26 +132,6 @@ sd_timeouts_t sd_timeouts = {
     .sd_sdio_stopTransmission = 200, // Timeout in ms for response
 };
 
-#if 0
-#define SIO_BASE            0xd0000000
-#define SIO_CORE1_MPU_BASE  ((volatile uint32_t*)(SIO_BASE + 0x2b0))
-#define SIO_CORE1_MPU_CTRL  ((volatile uint32_t*)(SIO_BASE + 0x2bc))
-
-void direct_boot_core1(uint32_t entry_addr, uint32_t stack_ptr, uint32_t vtor) {
-    // Reset Core 1 to ensure it is sitting in the clean ROM sleep loop
-    multicore_reset_core1();
-    sleep_ms(10);
-
-    // Write the raw ARM boot parameters straight into the SIO registers
-    // The RP2350 ROM polls these registers natively when awoken by an event.
-    SIO_CORE1_MPU_BASE[0] = vtor;       // Register Vector Table Address
-    SIO_CORE1_MPU_BASE[1] = stack_ptr;  // Register Stack Pointer
-    SIO_CORE1_MPU_BASE[2] = entry_addr; // Register Reset Vector (with thumb bit!)
-    
-    // Fire a Send-Event instruction to wake Core 1 up out of its low-power sleep
-    __asm volatile("sev");
-}
-#endif
 static char filename[MAX_FN_LENGTH] = {};
 
 /**
@@ -179,17 +168,15 @@ int main() {
     //direct_boot_core1(rust_entry_address, rust_stack_pointer, RUST_FLASH_ORIGIN);
     sleep_ms(1000);
 
-    spi::spi_init();
+    spi::spi_bus_init();
     spi::dma_init();
-    touch_init();
+    // touch_init();
     display_init();
     ring_buffer_init();
-    gpio_init(2);
-    gpio_pull_up(2);
-    gpio_set_dir(2, GPIO_IN);
+    // gpio_init(2);
+    // gpio_pull_up(2);
+    // gpio_set_dir(2, GPIO_IN);
 
-    static FIL fil;
-    static FIL debug_fil;
     static uint8_t rxdata[RING_BUFFER_SIZE];
     static uint8_t txdata[RING_BUFFER_SIZE];
     bool file_open = false;
@@ -223,6 +210,13 @@ int main() {
         panic("f_open(%s) error: %s (%d)\n", "debug.log", FRESULT_str(fr), fr);
     }
 #endif
+    // bool pin_val = gpio_get(2);
+
+    // if ( pin_val != last_pin_val ) {
+    printf("Created label\n");
+    // last_pin_val = pin_val;
+    label = display_create_file_label();
+    // }
 
     runtime.routine = {
         [&]() {
@@ -312,14 +306,6 @@ int main() {
 
     while (1) {
 
-        bool pin_val = gpio_get(2);
-
-        if ( pin_val != last_pin_val ) {
-            printf("Key pressed/depressed: %d\n", pin_val);
-            last_pin_val = pin_val;
-            label = display_create_file_label();
-        }
-
         uint32_t current_state = *HANDSHAKE_ADDR;
 
         if (current_state != last_state) {
@@ -335,12 +321,6 @@ int main() {
                 case 0x33333333:
                     printf("[Core 1 Sync]: SUCCESS! Core 1 completed init and is running.\n");
                     break;
-                // case 0x5EC07111:
-                //     printf("[Core 1 Sync]: SUCCESS! Core 1 is running in secure mode.\n");
-                //     break;
-                // case 0x0045c111:
-                //     printf("[Core 1 Sync]: SUCCESS! Core 1 is running in non-secure mode.\n");
-                //     break;
                 case 0x4EC07111:
                     printf("[Core 1 Sync]: SUCCESS! Core 1 clock init started.\n");
                     break;
@@ -372,9 +352,6 @@ int main() {
                     f_sync(&debug_fil);
 #endif
                     break;
-                // case 0x7EC07111:
-                //     printf("[Core 1 Sync]: SUCCESS! Core 1 detected key release.\n");
-                //     break;
                 default:
                     // If you see a completely random address value here, Core 1 hard-faulted
                     // and printed its stack trace memory markers over the handshake window.

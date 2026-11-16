@@ -55,7 +55,7 @@ namespace spi {
     }
 
     void wait_for_completion(int pid) {
-        std::cout<<"Process "<<pid<<" requested wait."<<std::endl;
+        //std::cout<<"Process "<<pid<<" requested wait."<<std::endl;
         while ( sem == 0 ) {
             sleep_ms(TICK_PERIOD);
             runtime.routine();
@@ -77,16 +77,16 @@ namespace spi {
         }
     }
 
-    void spi_init() {
+    void spi_bus_init() {
         
         gpio_init(DISPLAY_PIN_CS);
         gpio_set_dir(DISPLAY_PIN_CS, GPIO_OUT);
 
-        gpio_init(TOUCH_PIN_CS);  
-        gpio_set_dir(TOUCH_PIN_CS, GPIO_OUT);
+        // gpio_init(TOUCH_PIN_CS);  
+        // gpio_set_dir(TOUCH_PIN_CS, GPIO_OUT);
 
         // Initialise SPI at 30MHz (Safe ceiling for ILI9488 over standard wire)
-        spi_init(spi1, 1 * 1000 * 1000);
+        spi_init(spi1, 30 * 1000 * 1000);
 
     }
 
