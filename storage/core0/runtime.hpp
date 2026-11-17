@@ -4,6 +4,7 @@
 #include <string.h>
 #include <algorithm>
 #include "main.h"
+#include "lvgl/lvgl.h"
 
 struct Runtime {
     std::function<bool(void)> routine;
@@ -62,3 +63,4 @@ struct Port {
 
 extern struct Runtime runtime;
 extern Port<char [], MAX_FN_LENGTH> ui_track_name;
+extern lv_display_t* curr_disp;

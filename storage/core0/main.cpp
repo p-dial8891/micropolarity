@@ -56,7 +56,7 @@ extern size_t ring_buffer_push_string(const uint8_t* source, size_t length);
 #define RUST_RAM_END        (0x20010000 + (448 * 1024)) // 0x20080000
 
 #define MAX_FN_LENGTH 256
-#define TICK_FACTOR   (10)
+#define TICK_FACTOR   (2)
 
 /* 
  * Weird fix for C++ linking
@@ -189,8 +189,10 @@ int main() {
     bool last_pin_val = true;
     lv_obj_t * label = NULL;
     uint32_t display_tick_counter = TICK_FACTOR;
-    uint32_t touch_tick_counter = TICK_FACTOR*20;
+    uint32_t touch_tick_counter = TICK_FACTOR*5;
 
+    extern uint32_t SystemCoreClock;
+    printf("System core clock is %d\n", SystemCoreClock);
 #ifdef ENABLE_DISK
     // See FatFs - Generic FAT Filesystem Module, "Application Interface",
     // http://elm-chan.org/fsw/ff/00index_e.html
@@ -200,8 +202,6 @@ int main() {
         panic("f_mount error: %s (%d)\n", FRESULT_str(fr), fr);
         return -1;
     }
-    extern uint32_t SystemCoreClock;
-    printf("System core clock is %d\n", SystemCoreClock);
     
     static FIL fil;
     static FIL debug_fil;
@@ -367,27 +367,31 @@ int main() {
 
                 if ( ui_track_name.pop_deref(filename, MAX_FN_LENGTH) ) {
                     if ( label != NULL ) {
+                        printf("Filename received\n");
                         lv_label_set_text(label, filename);
                     }
                 }
-                display_tick(TICK_PERIOD * TICK_FACTOR);
+                display_tick(TICK_PERIOD * TICK_FACTOR * 100);
             } else {
                 display_tick_counter--;
-
                 if ( touch_tick_counter <= 0 ) {
-                    touch_tick_counter = TICK_FACTOR*20;
+                    touch_tick_counter = 0xFFFFFFFF;
                     // if ( !gpio_get(TOUCH_PIN_IRQ) ) {
+#if 0
                         uint32_t total = 0;
                         for(int i = 0; i < 9; i++) {
                             total += touch_get_x_pos();
                             sleep_us(200);
                         }
                         printf("Touch X position : %d\n", total/9);
+#endif
+                    char filename[MAX_FN_LENGTH] = "TestFile";
+                    (void)ui_track_name.push_deref(filename, MAX_FN_LENGTH);
+                    printf("Filename sent : %s\n", filename);
                     // }
                 } else {
                     touch_tick_counter--;
                 }
-
                 sleep_ms(TICK_PERIOD);
             }
 #endif

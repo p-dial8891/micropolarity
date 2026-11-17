@@ -34,7 +34,7 @@ include_directories(../)
 
 # Add executable. Default name is the project name, version 0.1
 add_executable(core0 
-    main.cpp ring_buffer.cpp messaging.cpp display.cpp runtime.cpp touch.cpp board/spi.cpp)
+    main.cpp ring_buffer.cpp messaging.cpp display.cpp runtime.cpp touch.cpp board/spi.cpp board/bsp_lcd_brightness.c)
 
 # Can leave these off for silent mode:
 # add_compile_definitions(USE_PRINTF USE_DBG_PRINTF)
@@ -53,6 +53,7 @@ target_link_libraries(core0
     pico_multicore
     hardware_sync
     hardware_spi
+    hardware_pwm
     no-OS-FatFS-SD-SDIO-SPI-RPi-Pico
     lvgl
 )

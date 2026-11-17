@@ -4,6 +4,7 @@
 #include "hardware/dma.h"
 #include "runtime.hpp"
 #include "board/spi.hpp"
+#include "lvgl/lvgl.h"
 
 namespace spi {
 
@@ -18,6 +19,9 @@ namespace spi {
         if ((*dma_hw_ints_p & (1 << dma_channel))) {
             *dma_hw_ints_p = 1 << dma_channel;  // Clear it.
 
+            if (curr_disp != NULL)
+                lv_display_flush_ready(curr_disp);
+            
             /* Release semaphore */
             sem = 1;
         }
@@ -55,9 +59,9 @@ namespace spi {
     }
 
     void wait_for_completion(int pid) {
-        //std::cout<<"Process "<<pid<<" requested wait."<<std::endl;
+        // std::cout<<"Process "<<pid<<" requested wait."<<std::endl;
         while ( sem == 0 ) {
-            sleep_ms(TICK_PERIOD);
+            sleep_us(TICK_PERIOD*10);
             runtime.routine();
         }
     }
@@ -86,8 +90,8 @@ namespace spi {
         // gpio_set_dir(TOUCH_PIN_CS, GPIO_OUT);
 
         // Initialise SPI at 30MHz (Safe ceiling for ILI9488 over standard wire)
-        spi_init(spi1, 30 * 1000 * 1000);
-
+        spi_init(spi1, 80 * 1000 * 1000);
+        spi_set_format(spi1, 8, SPI_CPOL_1, SPI_CPHA_1, SPI_MSB_FIRST);
     }
 
 }

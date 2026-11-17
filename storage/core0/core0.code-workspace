@@ -14,6 +14,9 @@
 		},
 		{
 			"path": "../../Pico-Eval-Board-Code"
+		},
+		{
+			"path": "../../RP2350-Touch-LCD-2.8-Demo-V2"
 		}
 	],
 	"settings": {
