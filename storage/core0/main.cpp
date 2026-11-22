@@ -190,6 +190,7 @@ int main() {
     lv_obj_t * label = NULL;
     uint32_t display_tick_counter = TICK_FACTOR;
     uint32_t touch_tick_counter = TICK_FACTOR*5;
+    char * filename_ptr = filename;
 
     extern uint32_t SystemCoreClock;
     printf("System core clock is %d\n", SystemCoreClock);
@@ -292,7 +293,7 @@ int main() {
                     f_sync(&debug_fil);
                     panic("FIFO send blocked.");
                 }
-                (void)ui_track_name.push_ref(filename, MAX_FN_LENGTH);
+                (void)ui_track_name.push_ptr(filename, MAX_FN_LENGTH);
                 file_open = true;
             } else {
                 ret = false;
@@ -365,10 +366,10 @@ int main() {
             if ( display_tick_counter <= 0 ) {
                 display_tick_counter = TICK_FACTOR;
 
-                if ( ui_track_name.pop_ref(filename, MAX_FN_LENGTH) ) {
+                if ( ui_track_name.pop_ptr(filename_ptr, MAX_FN_LENGTH) ) {
                     if ( label != NULL ) {
                         printf("Filename received\n");
-                        lv_label_set_text(label, filename);
+                        lv_label_set_text(label, filename_ptr);
                     }
                 }
                 display_tick(TICK_PERIOD * TICK_FACTOR / 10);
@@ -386,7 +387,7 @@ int main() {
                         printf("Touch X position : %d\n", total/9);
 #endif
                     char filename[MAX_FN_LENGTH] = "TestFileIsTooLong. This is longer.";
-                    (void)ui_track_name.push_ref(filename, MAX_FN_LENGTH);
+                    (void)ui_track_name.push_ptr(filename, MAX_FN_LENGTH);
                     printf("Filename sent : %s\n", filename);
                     // }
                 } else {
