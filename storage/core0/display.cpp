@@ -14,10 +14,6 @@
 #endif
 #include "main.h"
 
-#define SPI_PORT     spi1
-#define PIN_MISO     12
-#define PIN_MOSI     11
-#define PIN_SCK      10
 #define PIN_DC       14
 #define PIN_RST      15
 #define TFT_BL       16
@@ -51,9 +47,6 @@ void write_data(uint8_t data) {
 }
 #if 0
 void ili9488_init() {
-    gpio_set_function(PIN_MISO, GPIO_FUNC_SPI);
-    gpio_set_function(PIN_MOSI, GPIO_FUNC_SPI);
-    gpio_set_function(PIN_SCK, GPIO_FUNC_SPI);
     
     gpio_init(PIN_DC);  gpio_set_dir(PIN_DC, GPIO_OUT);
     gpio_init(PIN_RST); gpio_set_dir(PIN_RST, GPIO_OUT);
@@ -124,9 +117,6 @@ void ili9488_set_window(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2) {
 #endif
 
 void st7789_init() {
-    gpio_set_function(PIN_MISO, GPIO_FUNC_SPI);
-    gpio_set_function(PIN_MOSI, GPIO_FUNC_SPI);
-    gpio_set_function(PIN_SCK, GPIO_FUNC_SPI);
     gpio_init(TFT_BL);  gpio_set_dir(TFT_BL, GPIO_OUT);
     
     gpio_init(PIN_DC);  gpio_set_dir(PIN_DC, GPIO_OUT);
@@ -337,7 +327,7 @@ void display_init() {
     lv_display_set_rotation(disp, LV_DISPLAY_ROTATION_90);
     lv_display_set_buffers(disp, buf, NULL, sizeof(buf), LV_DISPLAY_RENDER_MODE_PARTIAL);
     lv_display_set_flush_cb(disp, my_disp_flush);
-    curr_disp = disp;
+    (void)prt_curr_disp.push(disp, sizeof(disp));
 }
 
 void display_tick(const uint32_t tick_period) {
@@ -357,7 +347,7 @@ lv_obj_t* display_create_file_label()
     /* Create a style */
     static lv_style_t style;
     lv_style_init(&style);
-    lv_style_set_text_font(&style, &lv_font_montserrat_28);  /* Set a larger font */
+    lv_style_set_text_font(&style, &lv_font_montserrat_14);  /* Set a larger font */
     /*Create a white label, set its text and align it to the center*/
     lv_obj_t * label = lv_label_create(lv_screen_active());
     lv_label_set_text(label, "");

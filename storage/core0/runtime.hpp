@@ -15,6 +15,8 @@ struct Port {
     size_t count;
     char data[N];
 
+    Port() = default;
+
     bool push(T& input, size_t length) {
         if ( count < 1 ) {
             memcpy((void*)data, (void*)&input, std::min(N, length));
@@ -35,9 +37,20 @@ struct Port {
         }
     }
 
-    bool push_deref(T& input, size_t length) {
+    bool peek(T& output, size_t length) {
+        if ( count > 0 ) {
+            memcpy((void*)&output, (void*)data, std::min(N, length));
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    // The '*_ref' variant is useful in cases where input is a reference
+    // or a pointer type and you want to use its referenced data 
+    bool push_ref(const T& input, size_t length) {
         if ( count < 1 ) {
-            memcpy((void*)data, (void*)input, std::min(N, length));
+            memcpy((void*)data, (const void*)input, std::min(N, length));
             count++;
             return true;
         } else {
@@ -45,7 +58,7 @@ struct Port {
         }
     }
 
-    bool pop_deref(T& output, size_t length) {
+    bool pop_ref(T& output, size_t length) {
         if ( count > 0 ) {
             memcpy((void*)output, (void*)data, std::min(N, length));
             count--;
@@ -63,4 +76,4 @@ struct Port {
 
 extern struct Runtime runtime;
 extern Port<char [], MAX_FN_LENGTH> ui_track_name;
-extern lv_display_t* curr_disp;
+extern Port<lv_display_t*,sizeof(lv_display_t*)> prt_curr_disp;

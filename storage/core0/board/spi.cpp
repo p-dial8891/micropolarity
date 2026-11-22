@@ -19,7 +19,8 @@ namespace spi {
         if ((*dma_hw_ints_p & (1 << dma_channel))) {
             *dma_hw_ints_p = 1 << dma_channel;  // Clear it.
 
-            if (curr_disp != NULL)
+            lv_display_t * curr_disp = NULL;
+            if (!prt_curr_disp.peek(curr_disp, sizeof(curr_disp)))
                 lv_display_flush_ready(curr_disp);
             
             /* Release semaphore */
@@ -81,17 +82,20 @@ namespace spi {
         }
     }
 
-    void spi_bus_init() {
+    void bus_init() {
         
         gpio_init(DISPLAY_PIN_CS);
         gpio_set_dir(DISPLAY_PIN_CS, GPIO_OUT);
 
         // gpio_init(TOUCH_PIN_CS);  
         // gpio_set_dir(TOUCH_PIN_CS, GPIO_OUT);
+        gpio_set_function(PIN_MISO, GPIO_FUNC_SPI);
+        gpio_set_function(PIN_MOSI, GPIO_FUNC_SPI);
+        gpio_set_function(PIN_SCK, GPIO_FUNC_SPI);
 
         // Initialise SPI at 30MHz (Safe ceiling for ILI9488 over standard wire)
-        spi_init(spi1, 80 * 1000 * 1000);
-        spi_set_format(spi1, 8, SPI_CPOL_1, SPI_CPHA_1, SPI_MSB_FIRST);
+        spi_init(SPI_PORT, 60 * 1000 * 1000);
+        spi_set_format(SPI_PORT, 8, SPI_CPOL_1, SPI_CPHA_1, SPI_MSB_FIRST);
     }
 
 }

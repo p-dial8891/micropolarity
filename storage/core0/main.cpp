@@ -168,7 +168,7 @@ int main() {
     //direct_boot_core1(rust_entry_address, rust_stack_pointer, RUST_FLASH_ORIGIN);
     sleep_ms(1000);
 
-    spi::spi_bus_init();
+    spi::bus_init();
     spi::dma_init();
     // touch_init();
     display_init();
@@ -292,7 +292,7 @@ int main() {
                     f_sync(&debug_fil);
                     panic("FIFO send blocked.");
                 }
-                (void)ui_track_name.push_deref(filename, MAX_FN_LENGTH);
+                (void)ui_track_name.push_ref(filename, MAX_FN_LENGTH);
                 file_open = true;
             } else {
                 ret = false;
@@ -365,13 +365,13 @@ int main() {
             if ( display_tick_counter <= 0 ) {
                 display_tick_counter = TICK_FACTOR;
 
-                if ( ui_track_name.pop_deref(filename, MAX_FN_LENGTH) ) {
+                if ( ui_track_name.pop_ref(filename, MAX_FN_LENGTH) ) {
                     if ( label != NULL ) {
                         printf("Filename received\n");
                         lv_label_set_text(label, filename);
                     }
                 }
-                display_tick(TICK_PERIOD * TICK_FACTOR * 100);
+                display_tick(TICK_PERIOD * TICK_FACTOR / 10);
             } else {
                 display_tick_counter--;
                 if ( touch_tick_counter <= 0 ) {
@@ -385,18 +385,18 @@ int main() {
                         }
                         printf("Touch X position : %d\n", total/9);
 #endif
-                    char filename[MAX_FN_LENGTH] = "TestFile";
-                    (void)ui_track_name.push_deref(filename, MAX_FN_LENGTH);
+                    char filename[MAX_FN_LENGTH] = "TestFileIsTooLong. This is longer.";
+                    (void)ui_track_name.push_ref(filename, MAX_FN_LENGTH);
                     printf("Filename sent : %s\n", filename);
                     // }
                 } else {
                     touch_tick_counter--;
                 }
-                sleep_ms(TICK_PERIOD);
+                sleep_us(TICK_PERIOD);
             }
 #endif
         } else {
-            sleep_ms(TICK_PERIOD);
+            sleep_us(TICK_PERIOD);
         }
     }
 

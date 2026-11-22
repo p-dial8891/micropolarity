@@ -3,6 +3,10 @@
 
 #define DISPLAY_PIN_CS      13
 // #define TOUCH_PIN_CS        16
+#define PIN_MISO     12
+#define PIN_MOSI     11
+#define PIN_SCK      10
+#define SPI_PORT     spi1
 
 namespace spi {
 
@@ -42,5 +46,5 @@ namespace spi {
     void dma_rx_start(uint8_t* destination, size_t rx_count);
     void wait_for_completion(int pid);
     void dma_init();
-    void spi_bus_init();
+    void bus_init();
 }
